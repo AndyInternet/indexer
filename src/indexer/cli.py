@@ -619,6 +619,10 @@ def tree(subpath: str, depth: int, path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
+@click.option(
+    "--type", "-t", "file_type", default=None, hidden=True,
+    help="Accepted for compatibility (ignored; grep always searches files)"
+)
 def grep_cmd(
     pattern: str,
     ext: str | None,
@@ -626,6 +630,7 @@ def grep_cmd(
     ignore_case: bool,
     max_results: int,
     path: str,
+    file_type: str | None,
 ):
     """Full-text search across all indexed files, ranked by importance."""
     from indexer.graph.builder import build_dependency_graph
@@ -693,21 +698,29 @@ def grep_cmd(
         return
 
     # Render results, most important files first
+    files_only = file_type == "f"
     shown = 0
     for fp, hits in file_matches:
-        score = scores.get(fp, 0.0)
-        rank_indicator = f" [rank: {score:.4f}]" if score > 0 else ""
-        click.echo(f"  {fp}{rank_indicator}")
-        for line_num, line_text in hits:
-            click.echo(f"    {line_num}:{line_text}")
+        if files_only:
+            click.echo(fp)
             shown += 1
             if shown >= max_results:
-                click.echo(f"\n... truncated at {max_results} results", err=True)
-                db.close()
-                return
-        click.echo()
+                break
+        else:
+            score = scores.get(fp, 0.0)
+            rank_indicator = f" [rank: {score:.4f}]" if score > 0 else ""
+            click.echo(f"  {fp}{rank_indicator}")
+            for line_num, line_text in hits:
+                click.echo(f"    {line_num}:{line_text}")
+                shown += 1
+                if shown >= max_results:
+                    click.echo(f"\n... truncated at {max_results} results", err=True)
+                    db.close()
+                    return
+            click.echo()
 
-    click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
+    if not files_only:
+        click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
 
     db.close()
 
