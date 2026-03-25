@@ -474,12 +474,16 @@ def find_cmd(pattern: str, entry_type: str | None, path: str):
     if entry_type != "f":
         candidates.extend((d, "d") for d in sorted(directories))
 
+    # Auto-wrap pattern with * if it has no glob characters (substring match)
+    has_glob = any(c in pattern for c in "*?[")
+    effective_pattern = pattern if has_glob else f"*{pattern}*"
+
     # Match: if pattern contains /, match full path; otherwise match basename
     use_full_path = "/" in pattern
     matches = []
     for candidate, ctype in candidates:
         target = candidate if use_full_path else Path(candidate).name
-        if fnmatch.fnmatch(target, pattern):
+        if fnmatch.fnmatch(target, effective_pattern):
             suffix = "/" if ctype == "d" else ""
             matches.append(f"{candidate}{suffix}")
 
@@ -612,13 +616,15 @@ def grep_cmd(
         ]
         file_paths = [p for p in file_paths if Path(p).suffix in extensions]
 
-    # Filter by file glob pattern
+    # Filter by file glob pattern (auto-wrap for substring match)
     if file_pattern:
+        has_glob = any(c in file_pattern for c in "*?[")
+        effective_fp = file_pattern if has_glob else f"*{file_pattern}*"
         use_full = "/" in file_pattern
         file_paths = [
             p
             for p in file_paths
-            if fnmatch.fnmatch(p if use_full else Path(p).name, file_pattern)
+            if fnmatch.fnmatch(p if use_full else Path(p).name, effective_fp)
         ]
 
     # Sort files by PageRank score (highest first), then alphabetically

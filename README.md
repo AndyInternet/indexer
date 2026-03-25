@@ -41,14 +41,17 @@ Indexer generates a local SQLite index of your codebase containing:
 ### Install globally
 
 ```bash
-# Install with uv (recommended)
+# Install or upgrade everything (CLI tool + Claude skills) with one command
+./install.sh
+
+# Or install just the CLI tool manually
 uv tool install /path/to/indexer
 
 # Or with pip
 pip install /path/to/indexer
 ```
 
-Once installed, `indexer` is available as a command anywhere on your system.
+Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades both the CLI and skills in place.
 
 ### Index a codebase
 
@@ -91,9 +94,10 @@ indexer grep "TODO" --ext .py
 indexer grep "database" --ignore-case
 indexer grep "config" --ext .yaml,.toml
 
-# Find files by name pattern
+# Find files by name (substring match by default)
+indexer find "auth"
 indexer find "*.py"
-indexer find "test*" --type f
+indexer find "test" --type f
 indexer find "src" --type d
 
 # Directory tree from indexed files
@@ -120,7 +124,7 @@ indexer update .
 | `indexer callers <symbol>` | Find all files that call a function, grouped by file with line numbers. |
 | `indexer impl <symbol>` | Print the full source code of a specific symbol, with line numbers. |
 | `indexer grep <pattern>` | Full-text regex search across all indexed files, ranked by PageRank importance. Supports `--ext`, `--ignore-case`, `--file-pattern`, `--max-results`. |
-| `indexer find <pattern>` | Find files or directories matching a glob pattern. Use `--type f` for files only, `--type d` for directories only. |
+| `indexer find <pattern>` | Find files or directories by name. Plain text does substring matching; glob characters (`*`, `?`, `[`) are used as-is. Use `--type f` for files only, `--type d` for directories only. |
 | `indexer tree [path]` | Show directory tree built from indexed files. Use `--depth N` to limit depth. |
 | `indexer stats` | Show index statistics: file count, symbol count, reference count, language breakdown. |
 
@@ -233,7 +237,10 @@ Indexer ships with three [Claude Code skills](https://code.claude.com/docs/en/sk
 ### Install the skills
 
 ```bash
-# Copy the skill directories to your global Claude skills folder
+# Install/upgrade CLI + skills together
+./install.sh
+
+# Or copy skills manually
 cp -r /path/to/indexer/.claude/skills/index-codebase ~/.claude/skills/
 cp -r /path/to/indexer/.claude/skills/setup-indexer ~/.claude/skills/
 cp -r /path/to/indexer/.claude/skills/explore-with-indexer ~/.claude/skills/
