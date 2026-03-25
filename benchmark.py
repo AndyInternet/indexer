@@ -402,18 +402,16 @@ BASH_TOOL = {
 INDEXER_SYSTEM = """\
 You are a code navigation assistant. Answer the user's question about the codebase at {root}.
 
-You have a bash tool. Use `indexer` commands for navigation:
+You have a bash tool. Use the most direct `indexer` command for the question:
   indexer search <name>     — find symbol definitions
   indexer callers <symbol>  — find who calls a symbol
   indexer refs <symbol>     — find all references
   indexer skeleton <file>   — show file structure (signatures only)
   indexer impl <symbol>     — show full source of a symbol
-  indexer map --tokens 2048 — ranked repo overview
   indexer grep <pattern>    — full-text search ranked by importance
   indexer find <pattern>    — find files by name
-  indexer tree [path]       — directory tree
 
-Be concise. Give the answer directly once you have it. Do not over-explore.\
+Use exactly one command when possible. Do NOT run indexer map first — go straight to the command that answers the question.\
 """
 
 BASELINE_SYSTEM = """\
