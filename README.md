@@ -173,27 +173,40 @@ Files are tracked by SHA-256 content hash. Running `indexer update` only re-pars
 
 ## Claude Code Integration
 
-Indexer ships with two Claude Code slash commands that can be installed globally:
+Indexer ships with two [Claude Code skills](https://code.claude.com/docs/en/skills) that can be installed globally so `/index-codebase` and `/setup-indexer` are available in any project.
 
 ### Install the skills
 
 ```bash
-# Copy the skills to your global Claude commands directory
-cp /path/to/indexer/.claude/commands/index-codebase.md ~/.claude/commands/
-cp /path/to/indexer/.claude/commands/setup-indexer.md ~/.claude/commands/
+# Copy the skill directories to your global Claude skills folder
+cp -r /path/to/indexer/.claude/skills/index-codebase ~/.claude/skills/
+cp -r /path/to/indexer/.claude/skills/setup-indexer ~/.claude/skills/
 ```
 
 ### `/index-codebase`
 
-Runs `indexer init .` or `indexer update` on the current project. Use this to build or refresh the index before a coding session.
+Builds or incrementally updates the structural code index for the current project. Run this at the start of a coding session to ensure the index is fresh.
 
 ### `/setup-indexer`
 
-Adds indexer usage instructions to the current project's `CLAUDE.md`, telling Claude to prefer `indexer` commands over `grep`/`glob` for codebase navigation. Run this once per project.
+Adds indexer usage instructions to the current project's `CLAUDE.md`, configuring Claude to prefer `indexer` commands over `grep`/`glob` for codebase navigation. Also ensures `.indexer/` is in `.gitignore`. Run this once per project.
+
+### Recommended workflow
+
+```
+# In any project, one-time setup:
+/setup-indexer
+/index-codebase
+
+# Start of each session:
+/index-codebase
+```
+
+After setup, Claude will automatically use `indexer search`, `indexer map`, `indexer skeleton`, etc. instead of grep/glob when navigating the codebase.
 
 ## Configuration
 
-The index is stored in `.indexer/index.db` inside the project root. Add `.indexer/` to your `.gitignore`.
+The index is stored in `.indexer/index.db` inside the project root. The `.indexer/` directory includes its own `.gitignore` (containing `*`) so it self-ignores even if the project doesn't explicitly exclude it.
 
 The following paths are ignored by default:
 

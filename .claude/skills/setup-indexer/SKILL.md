@@ -1,10 +1,20 @@
-Add indexer usage instructions to this project's CLAUDE.md file so that Claude prefers the indexer for codebase navigation in all future sessions.
+---
+name: setup-indexer
+description: Configure this project so Claude prefers the indexer for codebase navigation over grep and glob. Adds usage instructions to CLAUDE.md and ensures the index directory is gitignored.
+disable-model-invocation: true
+---
 
-First, check if a CLAUDE.md already exists in the project root. If it does, read it so you can append to it without overwriting existing content. If it doesn't exist, create it.
+# Setup Indexer for This Project
 
-Add the following section to the CLAUDE.md file (append it if the file already has content, making sure to add a blank line separator):
+Configure the current project so Claude prefers `indexer` commands over grep/glob for codebase navigation in all future sessions.
 
-```
+## Steps
+
+1. Check if a `CLAUDE.md` exists in the project root. If it does, read it so you can append without overwriting existing content.
+
+2. Append the following section to `CLAUDE.md` (create the file if it doesn't exist). Add a blank line separator if the file already has content:
+
+```markdown
 ## Codebase Navigation — Indexer
 
 This project has a structural code index at `.indexer/index.db` built with the `indexer` CLI tool. **Always prefer indexer commands over grep/glob/find for navigating this codebase.** The index uses Tree-sitter AST parsing, code skeletons, and PageRank to provide highly optimized context with minimal token usage.
@@ -46,9 +56,13 @@ This project has a structural code index at `.indexer/index.db` built with the `
 | Index stats | `indexer stats` |
 ```
 
-After writing the CLAUDE.md, tell the user:
+3. Check if `.indexer/` is in the project's `.gitignore`. If not, append it:
 
-1. The CLAUDE.md has been updated with indexer instructions
-2. Claude will now prefer `indexer` commands over grep/glob in this project
-3. They should run `/index-codebase` (or `indexer init .`) to build the index if it doesn't exist yet
-4. They should add `.indexer/` to their `.gitignore`
+```bash
+grep -q '\.indexer' .gitignore 2>/dev/null || echo '.indexer/' >> .gitignore
+```
+
+4. Tell the user:
+   - CLAUDE.md has been updated with indexer instructions
+   - Claude will now prefer `indexer` commands over grep/glob in this project
+   - They should run `/index-codebase` (or `indexer init .`) to build the index if it doesn't exist yet
