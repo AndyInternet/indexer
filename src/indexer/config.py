@@ -13,6 +13,7 @@ DEFAULT_IGNORE = [
     ".indexer",
     "__pycache__",
     "node_modules",
+    "vendor",
     ".venv",
     "venv",
     ".env",

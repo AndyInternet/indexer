@@ -56,7 +56,7 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 
 ### Default workflow — follow this order
 
-1. **Orient first**: Run `indexer map --tokens 2048` (or `--focus <file>`) to understand what matters in the repo.
+1. **Orient first**: Run `indexer map --tokens 2048` to understand what matters in the repo. **When you already know which files are relevant** (e.g., the user mentioned a file, you're mid-task, or the question is about a specific area), add `--focus <file>` for each relevant file — this applies a 50x PageRank boost so the map centers on that part of the codebase. Multiple `--focus` flags are supported.
 2. **Find symbols**: Run `indexer search <name>` — NEVER grep for function/class/method/type definitions.
 3. **Trace usage**: Run `indexer refs <symbol>` or `indexer callers <symbol>` — NEVER grep for a function name to find who calls it or imports it.
 4. **Understand structure**: Run `indexer skeleton <file>` — NEVER read an entire file just to see its structure.

@@ -98,14 +98,24 @@ def _index_files(
 
 
 def _resolve_references(db: Database, config: Config, files_to_index) -> None:
-    """Extract references now that all symbols are known."""
-    known_symbols = db.get_all_symbol_names()
-    if not known_symbols:
-        return
+    """Extract references now that all symbols are known.
+
+    References are resolved per-language to avoid cross-language contamination
+    in monorepos (e.g., Go's NewClient shouldn't create edges to Python's NewClient).
+    """
+    # Cache known symbols per language to avoid repeated queries
+    symbols_by_lang: dict[str, set[str]] = {}
 
     for i, fi in enumerate(files_to_index, 1):
         lang = detect_language(fi.path)
         if lang is None:
+            continue
+
+        # Get symbols for this language (cached)
+        if lang not in symbols_by_lang:
+            symbols_by_lang[lang] = db.get_all_symbol_names(language=lang)
+        known_symbols = symbols_by_lang[lang]
+        if not known_symbols:
             continue
 
         abs_path = config.root / fi.path

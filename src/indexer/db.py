@@ -132,7 +132,7 @@ class Database:
 
     def upsert_file(self, f: FileRecord) -> int:
         conn = self.connect()
-        cursor = conn.execute(
+        conn.execute(
             """INSERT INTO files (path, content_hash, last_modified, language, line_count, byte_size)
                VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(path) DO UPDATE SET
@@ -143,7 +143,9 @@ class Database:
                    byte_size=excluded.byte_size""",
             (f.path, f.content_hash, f.last_modified, f.language, f.line_count, f.byte_size),
         )
-        return cursor.lastrowid  # type: ignore[return-value]
+        # lastrowid is unreliable on ON CONFLICT UPDATE; query the actual id
+        row = conn.execute("SELECT id FROM files WHERE path = ?", (f.path,)).fetchone()
+        return row["id"]
 
     def get_file(self, path: str) -> FileRecord | None:
         conn = self.connect()
@@ -224,9 +226,17 @@ class Database:
             results.append((SymbolRecord(**d), file_path))
         return results
 
-    def get_all_symbol_names(self) -> set[str]:
+    def get_all_symbol_names(self, language: str | None = None) -> set[str]:
         conn = self.connect()
-        rows = conn.execute("SELECT DISTINCT name FROM symbols").fetchall()
+        if language:
+            rows = conn.execute(
+                "SELECT DISTINCT s.name FROM symbols s "
+                "JOIN files f ON s.file_id = f.id "
+                "WHERE f.language = ?",
+                (language,),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT DISTINCT name FROM symbols").fetchall()
         return {r["name"] for r in rows}
 
     # --- References ---

@@ -36,7 +36,7 @@ indexer update .
 >
 > Do NOT use Grep, Glob, find, or ls tools. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to examine.
 >
-> Start by running `indexer map --tokens 2048` to orient yourself, then investigate the question.
+> Start by orienting yourself with `indexer map`. If the user's question mentions specific files, symbols, or a subsystem, use `--focus <file>` to center the map on the relevant area (e.g., `indexer map --tokens 2048 --focus services/auth/handler.go`). If the question is broad, run `indexer map --tokens 2048` without focus. Then investigate.
 > Report your findings as a structured summary with file paths and key symbols.
 
 3. Return the agent's findings to the user.
