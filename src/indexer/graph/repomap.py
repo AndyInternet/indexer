@@ -80,16 +80,16 @@ def _render_files(paths: list[str], file_symbols: dict[str, list[SymbolRecord]])
 
         for sym in top_level:
             if sym.kind in ("class", "interface"):
-                lines.append(f"⋮")
+                lines.append("⋮")
                 sig = sym.signature or sym.name
                 lines.append(f"  {sig}:")
                 children = by_parent.get(sym.name, [])
                 for child in children:
-                    lines.append(f"  ⋮")
+                    lines.append("  ⋮")
                     child_sig = child.signature or child.name
                     lines.append(f"    {child_sig}")
             else:
-                lines.append(f"⋮")
+                lines.append("⋮")
                 sig = sym.signature or sym.name
                 lines.append(f"  {sig}")
 

@@ -4,15 +4,36 @@ AI-optimized codebase index generator. Uses Tree-sitter AST parsing, code skelet
 
 Built from research on [advanced codebase indexing strategies for AI agents](research.md).
 
-## Why
+## Why This Instead of grep/find/ls
 
-AI coding agents waste massive amounts of tokens using naive `grep`/`glob` to navigate codebases. Benchmarks show agents can burn 117,000+ tokens just *finding* the right files. With structural indexing, the same lookup costs ~8,500 tokens — a 14x reduction.
+Standard bash tools are designed for humans. AI agents use them anyway and pay for it — in tokens, in missed context, and in wasted turns. Here's what indexer does differently:
 
-Indexer solves this by generating a local SQLite index of your codebase containing:
+| What agents do | The problem | What indexer does instead |
+|---|---|---|
+| `grep -r "MyClass"` to find a definition | Returns every mention — imports, comments, string literals, tests — and the agent has to read them all to find the actual definition | `indexer search MyClass` returns only the definition with file, line, signature |
+| `grep -r "MyClass"` to find callers | Same wall of noise. Agent can't distinguish callers from definitions from type annotations | `indexer callers MyClass` returns only call sites, grouped by file |
+| `cat main.py` to understand a file | Dumps 500 lines of implementation into context. Agent burns tokens reading function bodies it doesn't need | `indexer skeleton main.py` shows imports + signatures only (~10% of tokens) |
+| `find . -name "*.py"` to explore the repo | Flat alphabetical list with no signal about what matters | `indexer map --tokens 2048` shows the most architecturally important files first, ranked by PageRank |
+| `grep -r "config" *.yaml` to search configs | Results in filesystem order — test fixtures before core config | `indexer grep "config" --ext .yaml` ranks results by file importance |
+| `find . -type f` / `ls -R` to see structure | Raw directory listing, no filtering for what the index knows about | `indexer tree --depth 2` shows the indexed project structure |
+
+The core advantages:
+
+- **Smarter results** — PageRank ranking surfaces the most important files first in `map`, `grep`, and `find`. An agent searching for `"database"` sees the core DB module before test mocks.
+- **Structural understanding** — `search`, `refs`, and `callers` use the AST-parsed symbol index, not text matching. They know the difference between a function definition, a function call, and a comment mentioning the function name.
+- **Token efficiency** — `skeleton` compresses files to ~10% of their token cost. `map` fits a ranked repo overview into a configurable token budget. Agents get more context per token spent.
+- **Consistency** — All commands respect the same ignore patterns (`.gitignore` + built-in defaults). No accidental searches through `node_modules` or `.venv`.
+- **Incremental** — SHA-256 content hashing means `indexer update` only re-parses changed files. The index stays fresh without full re-scans.
+
+## What It Indexes
+
+Indexer generates a local SQLite index of your codebase containing:
 
 - **Code skeletons** — imports + function signatures + class structure, no bodies (~10% of original tokens)
 - **PageRank repo map** — dependency-graph-ranked overview of the most important files, fitted to a configurable token budget
 - **Symbol index** — searchable database of all definitions and cross-file references
+- **Full-text search** — PageRank-ranked grep across all indexed files, so the most important results come first
+- **File discovery** — find files by pattern and view directory trees from the index, no filesystem walk needed
 - **Incremental updates** — SHA-256 hashing means only changed files are re-parsed
 
 ## Quickstart
@@ -65,11 +86,25 @@ indexer callers validate_token
 # Get the full implementation of a specific symbol
 indexer impl parse_file
 
+# Full-text search, ranked by file importance
+indexer grep "TODO" --ext .py
+indexer grep "database" --ignore-case
+indexer grep "config" --ext .yaml,.toml
+
+# Find files by name pattern
+indexer find "*.py"
+indexer find "test*" --type f
+indexer find "src" --type d
+
+# Directory tree from indexed files
+indexer tree
+indexer tree src/indexer --depth 2
+
 # Show index statistics
 indexer stats
 
 # Incrementally update after code changes
-indexer update
+indexer update .
 ```
 
 ## Commands Reference
@@ -84,6 +119,9 @@ indexer update
 | `indexer refs <symbol>` | Find all files and lines that reference a symbol. |
 | `indexer callers <symbol>` | Find all files that call a function, grouped by file with line numbers. |
 | `indexer impl <symbol>` | Print the full source code of a specific symbol, with line numbers. |
+| `indexer grep <pattern>` | Full-text regex search across all indexed files, ranked by PageRank importance. Supports `--ext`, `--ignore-case`, `--file-pattern`, `--max-results`. |
+| `indexer find <pattern>` | Find files or directories matching a glob pattern. Use `--type f` for files only, `--type d` for directories only. |
+| `indexer tree [path]` | Show directory tree built from indexed files. Use `--depth N` to limit depth. |
 | `indexer stats` | Show index statistics: file count, symbol count, reference count, language breakdown. |
 
 ## Supported Languages
@@ -100,6 +138,8 @@ indexer update
 | C++ | `.cpp`, `.cc`, `.cxx`, `.hpp` |
 | Ruby | `.rb` |
 | C# | `.cs` |
+
+Note: `indexer grep`, `indexer find`, and `indexer tree` work on *all* indexed files regardless of language, including YAML, Markdown, Makefile, Dockerfile, config files, etc.
 
 ## How It Works
 
@@ -167,13 +207,28 @@ src/indexer/cli.py:
 
 The map uses binary search to fit the maximum number of ranked symbols within your token budget. Use `--focus` to boost files you're currently working on (50x PageRank multiplier).
 
-### 4. Incremental Updates
+### 4. PageRank-Ranked Grep
+
+Unlike traditional `grep` which returns results in file-system order, `indexer grep` sorts results by PageRank importance. When searching for `"config"` across 200 files, hits in your core configuration module appear before test fixtures. Results are grouped by file with rank scores:
+
+```
+  src/indexer/config.py [rank: 0.1373]
+    5:from dataclasses import dataclass, field
+    60:class Config:
+    ...
+
+  src/indexer/cli.py [rank: 0.1592]
+    10:from indexer.config import Config
+    ...
+```
+
+### 5. Incremental Updates
 
 Files are tracked by SHA-256 content hash. Running `indexer update` only re-parses files that actually changed. The SQLite database uses `ON DELETE CASCADE` so re-indexing a file automatically cleans up its stale symbols, references, and skeleton.
 
 ## Claude Code Integration
 
-Indexer ships with two [Claude Code skills](https://code.claude.com/docs/en/skills) that can be installed globally so `/index-codebase` and `/setup-indexer` are available in any project.
+Indexer ships with three [Claude Code skills](https://code.claude.com/docs/en/skills) and a PreToolUse hook that can be installed globally.
 
 ### Install the skills
 
@@ -181,6 +236,7 @@ Indexer ships with two [Claude Code skills](https://code.claude.com/docs/en/skil
 # Copy the skill directories to your global Claude skills folder
 cp -r /path/to/indexer/.claude/skills/index-codebase ~/.claude/skills/
 cp -r /path/to/indexer/.claude/skills/setup-indexer ~/.claude/skills/
+cp -r /path/to/indexer/.claude/skills/explore-with-indexer ~/.claude/skills/
 ```
 
 ### `/index-codebase`
@@ -189,7 +245,32 @@ Builds or incrementally updates the structural code index for the current projec
 
 ### `/setup-indexer`
 
-Adds indexer usage instructions to the current project's `CLAUDE.md`, configuring Claude to prefer `indexer` commands over `grep`/`glob` for codebase navigation. Also ensures `.indexer/` is in `.gitignore`. Run this once per project.
+Configures a project for indexer-first navigation:
+- Appends comprehensive indexer instructions to `CLAUDE.md` (default workflow, exceptions table, anti-patterns, agent prompt block)
+- Installs a PreToolUse hook that reminds agents to use indexer when they reach for `grep`/`glob` with symbol-like patterns
+- Ensures `.indexer/` is in `.gitignore`
+
+Run this once per project.
+
+### `/explore-with-indexer`
+
+Spawns an exploration agent pre-loaded with indexer instructions. Use it to investigate unfamiliar code:
+
+```
+/explore-with-indexer How does the PageRank computation work?
+/explore-with-indexer Trace all callers of Database.connect
+```
+
+The agent starts by running `indexer map` to orient itself, then uses indexer commands exclusively for navigation.
+
+### PreToolUse hook
+
+The hook (installed by `/setup-indexer`) watches for Grep and Glob tool calls that look like symbol navigation:
+
+- **Grep with symbol-like patterns** (CamelCase, snake_case, PascalCase, ALL_CAPS) — injects a reminder to use `indexer search`/`refs`/`callers`
+- **Glob with broad code patterns** (`**/*.py`, `**/*`) — reminds to use `indexer map`/`find`/`tree`
+
+The hook never blocks — it only adds context to nudge agents toward the index.
 
 ### Recommended workflow
 
@@ -202,7 +283,7 @@ Adds indexer usage instructions to the current project's `CLAUDE.md`, configurin
 /index-codebase
 ```
 
-After setup, Claude will automatically use `indexer search`, `indexer map`, `indexer skeleton`, etc. instead of grep/glob when navigating the codebase.
+After setup, Claude will automatically use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob when navigating the codebase.
 
 ## Configuration
 
@@ -223,7 +304,7 @@ The `.gitignore` in your project root is also respected.
 
 ```
 src/indexer/
-  cli.py              CLI entry point (Click)
+  cli.py              CLI entry point (Click) — all commands
   db.py               SQLite schema + CRUD (WAL mode, cascade deletes)
   scanner.py           File discovery, SHA-256 hashing, change detection
   config.py            Default ignore patterns, paths

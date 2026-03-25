@@ -52,17 +52,49 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 
 ## Codebase Navigation — Indexer (MANDATORY)
 
-**CRITICAL: You MUST use `indexer` commands instead of Grep, Glob, Read, find, or ls for code navigation. Do NOT use Grep/Glob/Read tools to explore code structure, find symbol definitions, trace callers, or understand file layouts.**
+**CRITICAL: You MUST use `indexer` commands (via Bash) instead of Grep, Glob, Read, find, or ls for ALL code navigation. This is not optional. Violations waste tokens and miss cross-file relationships that only the index captures.**
 
-The only exceptions where Grep/Glob/Read are acceptable:
-- The index hasn't been built (run `indexer init .` first)
-- Searching for string literals, comments, or non-code text patterns
-- Reading specific file contents you already know you need (e.g., reading a config file, reading a file to edit it)
-- The `indexer` command is not available
+### Default workflow — follow this order
 
-**Self-check**: If you are about to grep for a function/class/symbol definition, STOP and use `indexer search` instead. If you are about to read a whole file to understand its structure, use `indexer skeleton` instead. If you need to trace callers or references, use `indexer callers`/`indexer refs` instead of grepping for the function name.
+1. **Orient first**: Run `indexer map --tokens 2048` (or `--focus <file>`) to understand what matters in the repo.
+2. **Find symbols**: Run `indexer search <name>` — NEVER grep for function/class/method/type definitions.
+3. **Trace usage**: Run `indexer refs <symbol>` or `indexer callers <symbol>` — NEVER grep for a function name to find who calls it or imports it.
+4. **Understand structure**: Run `indexer skeleton <file>` — NEVER read an entire file just to see its structure.
+5. **Get implementation**: Run `indexer impl <symbol>` to see full source of a specific symbol.
+6. **Read to edit**: Use `Read` ONLY when you already know the exact file and lines you need to modify.
 
-**When spawning agents**: Always instruct agents to use `indexer` commands via Bash for code exploration. Agents do not automatically follow these instructions unless explicitly told.
+### Exceptions — ONLY these justify Grep/Glob/Read
+
+| Situation | Why indexer can't help | What to use |
+|---|---|---|
+| Index not built yet | No data | Run `indexer init .` first, then use indexer |
+| Reading a specific file to edit it | You need exact file contents | Read |
+| `indexer` command unavailable | Tool missing | Grep/Glob/Read as fallback |
+
+**Note:** `indexer grep` now covers full-text search across all indexed files (including non-code: YAML, Makefile, Dockerfile, etc.). Use `indexer grep` instead of Grep for searching file contents. Use `indexer find` instead of Glob/find for locating files. Use `indexer tree` instead of ls/find for directory exploration.
+
+**If your reason is not in this table, use indexer.** "I want to find where function X is defined" is NOT an exception — use `indexer search X`.
+
+### Anti-patterns — stop and correct yourself
+
+| WRONG | RIGHT |
+|---|---|
+| `grep -r "ExecuteGenerateFlow"` to find definition | `indexer search ExecuteGenerateFlow` |
+| `grep -r "import.*services/ai"` to find importers | `indexer refs ai` or `indexer callers <symbol>` |
+| `find . -name "*.go" -type f` to explore repo | `indexer find "*.go"` or `indexer map --tokens 2048` |
+| `Read` entire `main.go` to understand structure | `indexer skeleton main.go` |
+| `grep -r "InitializeGenkit"` to find callers | `indexer callers InitializeGenkit` |
+| `Glob **/*.py` to find Python files | `indexer find "*.py"` |
+| `grep -r "genkit" *.yaml` to search config files | `indexer grep "genkit" --ext .yaml` |
+| `ls -R src/` to see directory structure | `indexer tree src` |
+
+### When spawning agents
+
+Agents do NOT inherit these instructions. You MUST include this directive in every agent prompt:
+
+> **Use `indexer` commands via Bash for ALL code navigation in this repo. Available commands: `indexer search <name>`, `indexer refs <symbol>`, `indexer callers <symbol>`, `indexer impl <symbol>`, `indexer skeleton [file]`, `indexer map --tokens 2048`, `indexer grep <pattern> [--ext .yaml] [-i]`, `indexer find <pattern>`, `indexer tree [path]`. Do NOT use Grep, Glob, find, or ls. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to edit.**
+
+Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
 ### Quick reference
 
@@ -77,4 +109,7 @@ The only exceptions where Grep/Glob/Read are acceptable:
 | Get implementation | `indexer impl <symbol>` |
 | File skeleton | `indexer skeleton <file>` |
 | Full repo skeleton | `indexer skeleton` |
+| Full-text search | `indexer grep <pattern> [--ext .yaml] [-i]` |
+| Find files by name | `indexer find <pattern> [--type f\|d]` |
+| Directory tree | `indexer tree [path] [--depth N]` |
 | Index stats | `indexer stats` |

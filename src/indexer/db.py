@@ -288,6 +288,14 @@ class Database:
         ).fetchone()
         return row["skeleton_text"] if row else None
 
+    # --- File paths ---
+
+    def get_all_file_paths(self) -> list[str]:
+        """Return all indexed file paths, sorted."""
+        conn = self.connect()
+        rows = conn.execute("SELECT path FROM files ORDER BY path").fetchall()
+        return [r["path"] for r in rows]
+
     # --- Stats ---
 
     def get_stats(self) -> dict[str, int]:

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import fnmatch
+import re
 import sys
 from pathlib import Path
+from typing import Iterator
 
 import click
 
@@ -28,7 +31,9 @@ def _get_db(config: Config) -> Database:
     return db
 
 
-def _index_files(db: Database, config: Config, files_to_index, action: str = "Indexing") -> None:
+def _index_files(
+    db: Database, config: Config, files_to_index, action: str = "Indexing"
+) -> None:
     """Parse, extract symbols/refs/skeletons for a list of FileInfo objects."""
     total = len(files_to_index)
     for i, fi in enumerate(files_to_index, 1):
@@ -65,7 +70,6 @@ def _index_files(db: Database, config: Config, files_to_index, action: str = "In
         symbols = extract_symbols(result)
         if symbols:
             sym_records = []
-            parent_ids: dict[str, int | None] = {}
 
             for sym in symbols:
                 sr = SymbolRecord(
@@ -99,7 +103,6 @@ def _resolve_references(db: Database, config: Config, files_to_index) -> None:
     if not known_symbols:
         return
 
-    total = len(files_to_index)
     for i, fi in enumerate(files_to_index, 1):
         lang = detect_language(fi.path)
         if lang is None:
@@ -159,11 +162,17 @@ def init(path: str):
 
     # Store non-parseable files (just metadata)
     for fi in non_parseable:
-        db.upsert_file(FileRecord(
-            id=None, path=fi.path, content_hash=fi.content_hash,
-            last_modified=fi.last_modified, language=None,
-            line_count=fi.line_count, byte_size=fi.byte_size,
-        ))
+        db.upsert_file(
+            FileRecord(
+                id=None,
+                path=fi.path,
+                content_hash=fi.content_hash,
+                last_modified=fi.last_modified,
+                language=None,
+                line_count=fi.line_count,
+                byte_size=fi.byte_size,
+            )
+        )
     db.connect().commit()
 
     click.echo(f"Parsing {len(parseable)} source files...")
@@ -229,7 +238,9 @@ def update(path: str):
 
 @main.command()
 @click.argument("file", required=False)
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def skeleton(file: str | None, path: str):
     """Print skeleton of a file or entire repo."""
     config = _get_config(path)
@@ -260,7 +271,9 @@ def skeleton(file: str | None, path: str):
 @main.command("map")
 @click.option("--tokens", "-t", default=4096, help="Token budget")
 @click.option("--focus", "-f", multiple=True, help="Files to boost in ranking")
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def repo_map(tokens: int, focus: tuple[str, ...], path: str):
     """Print PageRank-based repo map within token budget."""
     from indexer.graph.builder import build_dependency_graph
@@ -287,7 +300,9 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
 
 @main.command()
 @click.argument("query")
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def search(query: str, path: str):
     """Search symbols by name."""
     config = _get_config(path)
@@ -309,7 +324,9 @@ def search(query: str, path: str):
 
 @main.command()
 @click.argument("symbol")
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def refs(symbol: str, path: str):
     """Find all references to a symbol."""
     config = _get_config(path)
@@ -329,7 +346,9 @@ def refs(symbol: str, path: str):
 
 @main.command()
 @click.argument("symbol")
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def callers(symbol: str, path: str):
     """Find all callers of a function."""
     config = _get_config(path)
@@ -355,7 +374,9 @@ def callers(symbol: str, path: str):
 
 @main.command()
 @click.argument("symbol")
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def impl(symbol: str, path: str):
     """Get full implementation of a specific symbol."""
     config = _get_config(path)
@@ -383,7 +404,9 @@ def impl(symbol: str, path: str):
 
 
 @main.command()
-@click.option("--path", "-p", default=".", type=click.Path(exists=True), help="Project root")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
 def stats(path: str):
     """Show index statistics."""
     config = _get_config(path)
@@ -410,6 +433,235 @@ def stats(path: str):
         click.echo("\n  Languages:")
         for r in rows:
             click.echo(f"    {r['language']:15} {r['cnt']:5d} files")
+
+    db.close()
+
+
+@main.command("find")
+@click.argument("pattern")
+@click.option(
+    "--type",
+    "-t",
+    "entry_type",
+    type=click.Choice(["f", "d"]),
+    default=None,
+    help="Filter: f=files, d=directories",
+)
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def find_cmd(pattern: str, entry_type: str | None, path: str):
+    """Find files or directories matching a glob pattern."""
+    config = _get_config(path)
+    if not config.db_path.exists():
+        click.echo("No index found. Run 'indexer init' first.")
+        sys.exit(1)
+
+    db = _get_db(config)
+    file_paths = db.get_all_file_paths()
+
+    # Derive directory set from file paths
+    directories: set[str] = set()
+    for p in file_paths:
+        parts = Path(p).parts
+        for i in range(1, len(parts)):
+            directories.add(str(Path(*parts[:i])))
+
+    # Build candidate list
+    candidates: list[tuple[str, str]] = []  # (path, type)
+    if entry_type != "d":
+        candidates.extend((p, "f") for p in file_paths)
+    if entry_type != "f":
+        candidates.extend((d, "d") for d in sorted(directories))
+
+    # Match: if pattern contains /, match full path; otherwise match basename
+    use_full_path = "/" in pattern
+    matches = []
+    for candidate, ctype in candidates:
+        target = candidate if use_full_path else Path(candidate).name
+        if fnmatch.fnmatch(target, pattern):
+            suffix = "/" if ctype == "d" else ""
+            matches.append(f"{candidate}{suffix}")
+
+    if not matches:
+        click.echo(f"No matches for '{pattern}'")
+    else:
+        for m in sorted(matches):
+            click.echo(f"  {m}")
+        click.echo(f"\n{len(matches)} result(s)")
+
+    db.close()
+
+
+def _render_tree(node: dict, prefix: str, depth: int, max_depth: int) -> Iterator[str]:
+    """Render a directory tree with box-drawing characters."""
+    entries = sorted(node.keys(), key=lambda k: (not bool(node[k]), k))  # dirs first
+    for i, name in enumerate(entries):
+        is_last = i == len(entries) - 1
+        connector = "└── " if is_last else "├── "
+        yield f"{prefix}{connector}{name}"
+        children = node[name]
+        if children and (max_depth == 0 or depth + 1 < max_depth):
+            extension = "    " if is_last else "│   "
+            yield from _render_tree(children, prefix + extension, depth + 1, max_depth)
+
+
+@main.command()
+@click.argument("subpath", default="", required=False)
+@click.option(
+    "--depth", "-d", default=0, type=int, help="Max directory depth (0=unlimited)"
+)
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def tree(subpath: str, depth: int, path: str):
+    """Show directory tree from indexed files."""
+    config = _get_config(path)
+    if not config.db_path.exists():
+        click.echo("No index found. Run 'indexer init' first.")
+        sys.exit(1)
+
+    db = _get_db(config)
+    file_paths = db.get_all_file_paths()
+
+    # Filter to subpath if given
+    subpath = subpath.rstrip("/")
+    if subpath:
+        file_paths = [
+            p for p in file_paths if p == subpath or p.startswith(subpath + "/")
+        ]
+        if not file_paths:
+            click.echo(f"No files under '{subpath}'")
+            db.close()
+            return
+        # Strip the subpath prefix for tree building
+        prefix_len = len(subpath) + 1
+        relative_paths = [p[prefix_len:] for p in file_paths if len(p) > prefix_len]
+        root_label = subpath
+    else:
+        relative_paths = file_paths
+        root_label = "."
+
+    # Build trie from path components
+    tree_dict: dict = {}
+    for p in relative_paths:
+        parts = p.split("/")
+        node = tree_dict
+        for part in parts:
+            node = node.setdefault(part, {})
+
+    click.echo(root_label)
+    for line in _render_tree(tree_dict, "", 0, depth):
+        click.echo(line)
+
+    db.close()
+
+
+@main.command("grep")
+@click.argument("pattern")
+@click.option(
+    "--ext", "-e", default=None, help="Comma-separated extensions (e.g. .yaml,.go)"
+)
+@click.option("--file-pattern", "-f", default=None, help="Glob pattern for file paths")
+@click.option(
+    "--ignore-case", "-i", is_flag=True, default=False, help="Case-insensitive matching"
+)
+@click.option(
+    "--max-results", "-m", default=200, help="Maximum number of matches to show"
+)
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def grep_cmd(
+    pattern: str,
+    ext: str | None,
+    file_pattern: str | None,
+    ignore_case: bool,
+    max_results: int,
+    path: str,
+):
+    """Full-text search across all indexed files, ranked by importance."""
+    from indexer.graph.builder import build_dependency_graph
+    from indexer.graph.pagerank import compute_pagerank
+
+    config = _get_config(path)
+    if not config.db_path.exists():
+        click.echo("No index found. Run 'indexer init' first.")
+        sys.exit(1)
+
+    try:
+        flags = re.IGNORECASE if ignore_case else 0
+        regex = re.compile(pattern, flags)
+    except re.error as e:
+        click.echo(f"Invalid regex pattern: {e}")
+        sys.exit(1)
+
+    db = _get_db(config)
+
+    # Build PageRank scores for file ordering
+    graph = build_dependency_graph(db)
+    scores = compute_pagerank(graph)
+
+    file_paths = db.get_all_file_paths()
+
+    # Filter by extension
+    if ext:
+        extensions = [
+            e.strip() if e.strip().startswith(".") else f".{e.strip()}"
+            for e in ext.split(",")
+        ]
+        file_paths = [p for p in file_paths if Path(p).suffix in extensions]
+
+    # Filter by file glob pattern
+    if file_pattern:
+        use_full = "/" in file_pattern
+        file_paths = [
+            p
+            for p in file_paths
+            if fnmatch.fnmatch(p if use_full else Path(p).name, file_pattern)
+        ]
+
+    # Sort files by PageRank score (highest first), then alphabetically
+    file_paths.sort(key=lambda p: (-scores.get(p, 0.0), p))
+
+    # Collect matches grouped by file, preserving rank order
+    file_matches: list[tuple[str, list[tuple[int, str]]]] = []
+    total_matches = 0
+    for fp in file_paths:
+        abs_path = config.root / fp
+        hits: list[tuple[int, str]] = []
+        try:
+            with open(abs_path, errors="ignore") as f:
+                for line_num, line in enumerate(f, 1):
+                    if regex.search(line):
+                        hits.append((line_num, line.rstrip()))
+                        total_matches += 1
+        except OSError:
+            continue
+        if hits:
+            file_matches.append((fp, hits))
+
+    if total_matches == 0:
+        click.echo(f"No matches for '{pattern}'")
+        db.close()
+        return
+
+    # Render results, most important files first
+    shown = 0
+    for fp, hits in file_matches:
+        score = scores.get(fp, 0.0)
+        rank_indicator = f" [rank: {score:.4f}]" if score > 0 else ""
+        click.echo(f"  {fp}{rank_indicator}")
+        for line_num, line_text in hits:
+            click.echo(f"    {line_num}:{line_text}")
+            shown += 1
+            if shown >= max_results:
+                click.echo(f"\n... truncated at {max_results} results", err=True)
+                db.close()
+                return
+        click.echo()
+
+    click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
 
     db.close()
 
