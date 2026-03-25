@@ -32,7 +32,6 @@ Configure the current project so Claude prefers `indexer` commands over grep/glo
 
 | Situation | Why indexer can't help | What to use |
 |---|---|---|
-| Index not built yet | No data | Run `indexer init .` first, then use indexer |
 | Reading a specific file to edit it | You need exact file contents | Read |
 | `indexer` command unavailable | Tool missing | Grep/Glob/Read as fallback |
 
@@ -65,7 +64,6 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
 | Task | Command |
 |---|---|
-| Refresh index | `indexer update .` |
 | Ranked repo overview | `indexer map --tokens 2048` |
 | Focused repo map | `indexer map --tokens 1024 --focus <file>` |
 | Find a symbol | `indexer search <name>` |
@@ -122,4 +120,5 @@ grep -q '\.indexer' .gitignore 2>/dev/null || echo '.indexer/' >> .gitignore
    - CLAUDE.md has been updated with comprehensive indexer instructions
    - A PreToolUse hook has been installed to remind agents about indexer commands
    - Claude will now prefer `indexer` commands over grep/glob in this project
-   - They should run `/index-codebase` (or `indexer init .`) to build the index if it doesn't exist yet
+   - The index will be built automatically on first use (no manual `indexer init` needed)
+   - The index auto-updates when the git branch or commit changes, or after 5 minutes of staleness

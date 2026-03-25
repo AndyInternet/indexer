@@ -54,6 +54,11 @@ CREATE INDEX IF NOT EXISTS idx_symbols_kind ON symbols(kind);
 CREATE INDEX IF NOT EXISTS idx_refs_from ON refs(from_file_id);
 CREATE INDEX IF NOT EXISTS idx_refs_to ON refs(to_symbol_name);
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
+
+CREATE TABLE IF NOT EXISTS metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 
@@ -278,6 +283,25 @@ class Database:
         conn = self.connect()
         conn.execute("DELETE FROM symbols WHERE file_id = ?", (file_id,))
 
+    def resolve_parent_symbols(self, file_id: int, parent_map: dict[str, str]) -> None:
+        """Set parent_symbol_id for symbols whose parent_name was extracted.
+
+        parent_map: {child_symbol_name: parent_symbol_name}
+        """
+        if not parent_map:
+            return
+        conn = self.connect()
+        for child_name, parent_name in parent_map.items():
+            conn.execute(
+                """UPDATE symbols SET parent_symbol_id = (
+                       SELECT id FROM symbols
+                       WHERE name = ? AND file_id = ? AND kind IN ('class', 'interface')
+                       LIMIT 1
+                   )
+                   WHERE name = ? AND file_id = ?""",
+                (parent_name, file_id, child_name, file_id),
+            )
+
     # --- Skeletons ---
 
     def upsert_skeleton(self, file_id: int, skeleton_text: str, token_count: int) -> None:
@@ -305,6 +329,30 @@ class Database:
         conn = self.connect()
         rows = conn.execute("SELECT path FROM files ORDER BY path").fetchall()
         return [r["path"] for r in rows]
+
+    # --- Metadata ---
+
+    def get_metadata(self, key: str) -> str | None:
+        conn = self.connect()
+        try:
+            row = conn.execute(
+                "SELECT value FROM metadata WHERE key = ?", (key,)
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return None
+        return row["value"] if row else None
+
+    def set_metadata(self, key: str, value: str) -> None:
+        conn = self.connect()
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO metadata (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (key, value),
+        )
+        conn.commit()
 
     # --- Stats ---
 

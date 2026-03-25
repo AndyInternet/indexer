@@ -11,10 +11,10 @@ uv pip install -e ".[dev]"
 # Install globally as a CLI tool
 uv tool install /path/to/indexer
 
-# Run the CLI
-indexer init .          # Build index from scratch
-indexer update .        # Incremental update
+# Run the CLI (index is auto-built and auto-updated on first use)
 indexer stats           # Show index statistics
+indexer init .          # Force full re-index from scratch
+indexer update .        # Explicit incremental update
 
 # Lint
 ruff check src/
@@ -36,7 +36,7 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 
 3. **Skeleton extractor** ([skeleton/extractor.py](src/indexer/skeleton/extractor.py)) strips function/method bodies from parsed ASTs, keeping only imports, signatures, and class structure (~10% of original tokens).
 
-4. **Database** ([db.py](src/indexer/db.py)) is SQLite with WAL mode. Four tables: `files`, `symbols`, `refs`, `skeletons`. All child tables use `ON DELETE CASCADE` from `files`, so re-indexing a file automatically cleans up stale data. Data classes (`FileRecord`, `SymbolRecord`, `RefRecord`) are plain dataclasses, not ORM models.
+4. **Database** ([db.py](src/indexer/db.py)) is SQLite with WAL mode. Five tables: `files`, `symbols`, `refs`, `skeletons`, `metadata`. All child tables use `ON DELETE CASCADE` from `files`, so re-indexing a file automatically cleans up stale data. The `metadata` table stores git branch/commit for freshness tracking. Data classes (`FileRecord`, `SymbolRecord`, `RefRecord`) are plain dataclasses, not ORM models.
 
 5. **Graph + PageRank** ([graph/](src/indexer/graph/)) builds a networkx `DiGraph` from cross-file references (file A references symbol in file B = edge A→B). PageRank is a custom power-iteration implementation ([pagerank.py](src/indexer/graph/pagerank.py)) with no scipy dependency. `--focus` applies a 50x personalization boost.
 
@@ -49,6 +49,7 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 - **Two-pass indexing**: References can only be resolved after all symbols from all files are in the database. The CLI orchestrates this as: index all files (pass 1), then resolve all references (pass 2).
 - **No scipy/numpy**: PageRank uses pure-Python power iteration to keep the dependency footprint small for global CLI installation.
 - **Self-ignoring `.indexer/`**: The `Database.connect()` method auto-creates a `.indexer/.gitignore` containing `*`, so the index directory is ignored even without project-level `.gitignore` configuration.
+- **Auto-freshness**: Every query command checks stored git branch/commit against current HEAD. If stale (branch switch, new commits), an incremental update runs automatically. If no index exists, it's built on first use. This is handled by [freshness.py](src/indexer/freshness.py). Non-git repos skip the check gracefully.
 
 ## Codebase Navigation — Indexer (MANDATORY)
 
@@ -67,7 +68,6 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 
 | Situation | Why indexer can't help | What to use |
 |---|---|---|
-| Index not built yet | No data | Run `indexer init .` first, then use indexer |
 | Reading a specific file to edit it | You need exact file contents | Read |
 | `indexer` command unavailable | Tool missing | Grep/Glob/Read as fallback |
 
@@ -100,7 +100,6 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
 | Task | Command |
 |---|---|
-| Refresh index | `indexer update .` |
 | Ranked repo overview | `indexer map --tokens 2048` |
 | Focused repo map | `indexer map --tokens 1024 --focus <file>` |
 | Find a symbol | `indexer search <name>` |

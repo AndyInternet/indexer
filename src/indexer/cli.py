@@ -12,6 +12,7 @@ import click
 
 from indexer.config import Config
 from indexer.db import Database, FileRecord, RefRecord, SymbolRecord
+from indexer.freshness import ensure_fresh, save_freshness
 from indexer.parsing.extractors import extract_references, extract_symbols
 from indexer.parsing.languages import detect_language
 from indexer.parsing.parser import parse_file
@@ -25,10 +26,45 @@ def _get_config(path: str | None = None) -> Config:
     return Config(root=root)
 
 
-def _get_db(config: Config) -> Database:
+def _get_db(config: Config, fresh: bool = False) -> Database:
+    needs_init = fresh and not config.db_path.exists()
     db = Database(config.db_path)
     db.connect()
+    if needs_init:
+        click.echo("No index found, building...", err=True)
+        _auto_init(db, config)
+    elif fresh:
+        ensure_fresh(db, config.root)
     return db
+
+
+def _auto_init(db: Database, config: Config) -> None:
+    """Build the index from scratch (called automatically on first query)."""
+    db.init_schema()
+    files = list(scan_directory(config.root, config.ignore_patterns))
+    parseable = [f for f in files if detect_language(f.path) is not None]
+    non_parseable = [f for f in files if detect_language(f.path) is None]
+
+    for fi in non_parseable:
+        db.upsert_file(
+            FileRecord(
+                id=None, path=fi.path, content_hash=fi.content_hash,
+                last_modified=fi.last_modified, language=None,
+                line_count=fi.line_count, byte_size=fi.byte_size,
+            )
+        )
+    db.connect().commit()
+
+    if parseable:
+        _index_files(db, config, parseable)
+        _resolve_references(db, config, parseable)
+
+    save_freshness(db, config.root)
+    stats = db.get_stats()
+    click.echo(
+        f"Indexed {stats['files']} files, {stats['symbols']} symbols.",
+        err=True,
+    )
 
 
 def _index_files(
@@ -69,10 +105,8 @@ def _index_files(
         # Extract symbols
         symbols = extract_symbols(result)
         if symbols:
-            sym_records = []
-
-            for sym in symbols:
-                sr = SymbolRecord(
+            sym_records = [
+                SymbolRecord(
                     id=None,
                     name=sym.name,
                     kind=sym.kind,
@@ -84,9 +118,17 @@ def _index_files(
                     signature=sym.signature,
                     parent_symbol_id=None,
                 )
-                sym_records.append(sr)
-
+                for sym in symbols
+            ]
             db.insert_symbols(sym_records)
+
+            # Resolve parent-child relationships (e.g., method → class)
+            parent_map = {
+                sym.name: sym.parent_name
+                for sym in symbols
+                if sym.parent_name
+            }
+            db.resolve_parent_symbols(file_id, parent_map)
 
         # Extract skeleton
         skeleton_text = extract_skeleton(result)
@@ -199,6 +241,7 @@ def init(path: str):
         f"{stats['skeletons']} skeletons."
     )
     click.echo(f"Index stored at: {config.db_path}")
+    save_freshness(db, config.root)
     db.close()
 
 
@@ -207,11 +250,13 @@ def init(path: str):
 def update(path: str):
     """Incrementally update the index for changed files."""
     config = _get_config(path)
-    db = _get_db(config)
-
     if not config.db_path.exists():
-        click.echo("No index found. Run 'indexer init' first.")
-        sys.exit(1)
+        db = _get_db(config)
+        click.echo("No index found, building from scratch...")
+        _auto_init(db, config)
+        db.close()
+        return
+    db = _get_db(config)
 
     click.echo("Scanning for changes...")
     files = list(scan_directory(config.root, config.ignore_patterns))
@@ -243,6 +288,7 @@ def update(path: str):
         f"{stats['symbols']} symbols, "
         f"{stats['refs']} references."
     )
+    save_freshness(db, config.root)
     db.close()
 
 
@@ -254,7 +300,7 @@ def update(path: str):
 def skeleton(file: str | None, path: str):
     """Print skeleton of a file or entire repo."""
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     if file:
         frec = db.get_file(file)
@@ -291,7 +337,7 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
     from indexer.graph.repomap import render_repo_map
 
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     click.echo("Building dependency graph...", err=True)
     graph = build_dependency_graph(db)
@@ -316,7 +362,7 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
 def search(query: str, path: str):
     """Search symbols by name."""
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     results = db.search_symbols(query)
     if not results:
@@ -340,7 +386,7 @@ def search(query: str, path: str):
 def refs(symbol: str, path: str):
     """Find all references to a symbol."""
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     results = db.get_refs_to_symbol(symbol)
     if not results:
@@ -362,7 +408,7 @@ def refs(symbol: str, path: str):
 def callers(symbol: str, path: str):
     """Find all callers of a function."""
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     results = db.get_refs_to_symbol(symbol)
     if not results:
@@ -390,7 +436,7 @@ def callers(symbol: str, path: str):
 def impl(symbol: str, path: str):
     """Get full implementation of a specific symbol."""
     config = _get_config(path)
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     results = db.get_symbol_by_name(symbol)
     if not results:
@@ -420,12 +466,7 @@ def impl(symbol: str, path: str):
 def stats(path: str):
     """Show index statistics."""
     config = _get_config(path)
-
-    if not config.db_path.exists():
-        click.echo("No index found. Run 'indexer init' first.")
-        sys.exit(1)
-
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
     s = db.get_stats()
 
     click.echo(f"Index: {config.db_path}")
@@ -463,11 +504,7 @@ def stats(path: str):
 def find_cmd(pattern: str, entry_type: str | None, path: str):
     """Find files or directories matching a glob pattern."""
     config = _get_config(path)
-    if not config.db_path.exists():
-        click.echo("No index found. Run 'indexer init' first.")
-        sys.exit(1)
-
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
     file_paths = db.get_all_file_paths()
 
     # Derive directory set from file paths
@@ -531,11 +568,7 @@ def _render_tree(node: dict, prefix: str, depth: int, max_depth: int) -> Iterato
 def tree(subpath: str, depth: int, path: str):
     """Show directory tree from indexed files."""
     config = _get_config(path)
-    if not config.db_path.exists():
-        click.echo("No index found. Run 'indexer init' first.")
-        sys.exit(1)
-
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
     file_paths = db.get_all_file_paths()
 
     # Filter to subpath if given
@@ -599,9 +632,6 @@ def grep_cmd(
     from indexer.graph.pagerank import compute_pagerank
 
     config = _get_config(path)
-    if not config.db_path.exists():
-        click.echo("No index found. Run 'indexer init' first.")
-        sys.exit(1)
 
     try:
         flags = re.IGNORECASE if ignore_case else 0
@@ -610,7 +640,7 @@ def grep_cmd(
         click.echo(f"Invalid regex pattern: {e}")
         sys.exit(1)
 
-    db = _get_db(config)
+    db = _get_db(config, fresh=True)
 
     # Build PageRank scores for file ordering
     graph = build_dependency_graph(db)

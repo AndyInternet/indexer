@@ -2,7 +2,6 @@
 name: explore-with-indexer
 description: Spawn an exploration agent pre-loaded with indexer instructions for code navigation. Use when investigating code structure, tracing dependencies, or understanding unfamiliar parts of the codebase.
 disable-model-invocation: true
-allowed-tools: Bash, Agent
 argument-hint: "<question about the codebase>"
 ---
 
@@ -12,13 +11,7 @@ Spawn a focused exploration agent that uses `indexer` commands for all code navi
 
 ## Steps
 
-1. First, ensure the index is up to date:
-
-```bash
-indexer update .
-```
-
-2. Spawn an Explore agent with the following prompt, replacing `$ARGUMENTS` with the user's exploration question:
+1. Spawn an Explore agent with the following prompt, replacing `$ARGUMENTS` with the user's exploration question (the index auto-builds and auto-updates on first use):
 
 > You are a code exploration agent. Your task: $ARGUMENTS
 >

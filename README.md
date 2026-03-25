@@ -24,6 +24,7 @@ The core advantages:
 - **Token efficiency** — `skeleton` compresses files to ~10% of their token cost. `map` fits a ranked repo overview into a configurable token budget. Agents get more context per token spent.
 - **Consistency** — All commands respect the same ignore patterns (`.gitignore` + built-in defaults). No accidental searches through `node_modules` or `.venv`.
 - **Incremental** — SHA-256 content hashing means `indexer update` only re-parses changed files. The index stays fresh without full re-scans.
+- **Self-healing** — The index auto-builds on first query and auto-updates when it detects changes. In git repos, a fingerprint of `HEAD + git status` catches branch switches, new commits, and uncommitted edits. In non-git repos, file mtimes are fingerprinted instead. No manual `init` or `update` needed.
 
 ## What It Indexes
 
@@ -35,6 +36,7 @@ Indexer generates a local SQLite index of your codebase containing:
 - **Full-text search** — PageRank-ranked grep across all indexed files, so the most important results come first
 - **File discovery** — find files by pattern and view directory trees from the index, no filesystem walk needed
 - **Incremental updates** — SHA-256 hashing means only changed files are re-parsed
+- **Auto-freshness** — index auto-builds on first query and auto-updates when git state or file mtimes change
 
 ## Quickstart
 
@@ -55,12 +57,15 @@ Once installed, `indexer` is available as a command anywhere on your system. Run
 
 ### Index a codebase
 
+The index is built automatically on first query — just start using any command. To explicitly build or rebuild:
+
 ```bash
 cd /path/to/your/project
-indexer init .
+indexer init .          # Full index from scratch
+indexer update .        # Incremental update (changed files only)
 ```
 
-This scans the project, parses all supported source files with Tree-sitter, extracts symbols and references, generates code skeletons, and stores everything in `.indexer/index.db`.
+The index is stored in `.indexer/index.db`. It auto-updates on subsequent queries when it detects changes (git state or file mtimes).
 
 ### Query the index
 
@@ -106,10 +111,9 @@ indexer tree src/indexer --depth 2
 
 # Show index statistics
 indexer stats
-
-# Incrementally update after code changes
-indexer update .
 ```
+
+> **Note:** You don't need to run `indexer update` manually — query commands auto-detect changes and update the index before returning results.
 
 ## Commands Reference
 
@@ -226,9 +230,11 @@ Unlike traditional `grep` which returns results in file-system order, `indexer g
     ...
 ```
 
-### 5. Incremental Updates
+### 5. Auto-Freshness and Incremental Updates
 
-Files are tracked by SHA-256 content hash. Running `indexer update` only re-parses files that actually changed. The SQLite database uses `ON DELETE CASCADE` so re-indexing a file automatically cleans up its stale symbols, references, and skeleton.
+Every query command checks a stored fingerprint before running. In git repos, the fingerprint is `sha256(HEAD commit + git status --porcelain)`, which captures branch switches, new commits, staged changes, unstaged edits, and untracked files — all in one ~10ms check. In non-git repos, file mtimes are fingerprinted instead. If the fingerprint changed, an incremental update runs automatically before the query returns results.
+
+Files are tracked by SHA-256 content hash, so only changed files are re-parsed. The SQLite database uses `ON DELETE CASCADE` so re-indexing a file automatically cleans up its stale symbols, references, and skeleton.
 
 ## Claude Code Integration
 
@@ -248,7 +254,7 @@ cp -r /path/to/indexer/.claude/skills/explore-with-indexer ~/.claude/skills/
 
 ### `/index-codebase`
 
-Builds or incrementally updates the structural code index for the current project. Run this at the start of a coding session to ensure the index is fresh.
+Explicitly builds or incrementally updates the index. Useful for forcing a rebuild — the index auto-updates on every query, so this is rarely needed.
 
 ### `/setup-indexer`
 
@@ -257,7 +263,7 @@ Configures a project for indexer-first navigation:
 - Installs a PreToolUse hook that reminds agents to use indexer when they reach for `grep`/`glob` with symbol-like patterns
 - Ensures `.indexer/` is in `.gitignore`
 
-Run this once per project.
+Run this once per project. The index builds and stays fresh automatically — no manual indexing step needed.
 
 ### `/explore-with-indexer`
 
@@ -284,13 +290,9 @@ The hook never blocks — it only adds context to nudge agents toward the index.
 ```
 # In any project, one-time setup:
 /setup-indexer
-/index-codebase
-
-# Start of each session:
-/index-codebase
 ```
 
-After setup, Claude will automatically use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob when navigating the codebase.
+That's it. The index builds automatically on first query and stays fresh via fingerprinting. No need to run `/index-codebase` at the start of each session — Claude will use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob, and the index self-updates when it detects changes.
 
 ## Benchmarking
 
@@ -368,6 +370,7 @@ The `.gitignore` in your project root is also respected.
 src/indexer/
   cli.py              CLI entry point (Click) — all commands
   db.py               SQLite schema + CRUD (WAL mode, cascade deletes)
+  freshness.py         Auto-freshness via git/mtime fingerprinting
   scanner.py           File discovery, SHA-256 hashing, change detection
   config.py            Default ignore patterns, paths
   tokens.py            tiktoken wrapper (cl100k_base encoding)

@@ -71,21 +71,6 @@ DEFINITION_NODES: dict[str, dict[str, str]] = {
     },
 }
 
-# Node types containing import statements
-IMPORT_NODES: dict[str, set[str]] = {
-    "python": {"import_statement", "import_from_statement"},
-    "typescript": {"import_statement", "import_clause"},
-    "tsx": {"import_statement", "import_clause"},
-    "javascript": {"import_statement"},
-    "go": {"import_declaration"},
-    "rust": {"use_declaration"},
-    "java": {"import_declaration"},
-    "c": {"preproc_include"},
-    "cpp": {"preproc_include", "using_declaration"},
-    "ruby": {"call"},  # require/require_relative
-    "c_sharp": {"using_directive"},
-}
-
 
 @dataclass
 class Symbol:
