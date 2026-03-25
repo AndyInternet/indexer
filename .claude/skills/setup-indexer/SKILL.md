@@ -15,30 +15,19 @@ Configure the current project so Claude prefers `indexer` commands over grep/glo
 2. Append the following section to `CLAUDE.md` (create the file if it doesn't exist). Add a blank line separator if the file already has content:
 
 ```markdown
-## Codebase Navigation — Indexer
+## Codebase Navigation — Indexer (MANDATORY)
 
-This project has a structural code index at `.indexer/index.db` built with the `indexer` CLI tool. **Always prefer indexer commands over grep/glob/find for navigating this codebase.** The index uses Tree-sitter AST parsing, code skeletons, and PageRank to provide highly optimized context with minimal token usage.
+**CRITICAL: You MUST use `indexer` commands instead of Grep, Glob, Read, find, or ls for code navigation. Do NOT use Grep/Glob/Read tools to explore code structure, find symbol definitions, trace callers, or understand file layouts.**
 
-### Preferred workflow
-
-1. **Start of session**: Run `indexer update .` to refresh the index if files have changed.
-
-2. **Understand the codebase structure**: Use `indexer map --tokens 2048` to get a PageRank-ranked overview of the most important files and their key symbols. Use `--focus <file>` to boost files relevant to the current task.
-
-3. **Find symbols**: Use `indexer search <name>` to find function, class, or method definitions by name. This is faster and more precise than grep for finding definitions.
-
-4. **Understand dependencies**: Use `indexer refs <symbol>` or `indexer callers <symbol>` to trace how symbols are used across the codebase. This replaces multi-step grep workflows.
-
-5. **Read specific implementations**: Use `indexer impl <symbol>` to get the exact source code of a function or class, with line numbers. This retrieves only the relevant code, not the entire file.
-
-6. **Get file overviews**: Use `indexer skeleton <file>` to see the structural outline of a file (imports, class definitions, function signatures) without implementation bodies. This uses ~10% of the tokens compared to reading the full file.
-
-### When to fall back to grep/glob
-
-- The index hasn't been built yet (run `indexer init .` first)
-- Searching for string literals, comments, or non-symbol text patterns
-- Searching within file contents that aren't structural code (config files, prose, etc.)
+The only exceptions where Grep/Glob/Read are acceptable:
+- The index hasn't been built (run `indexer init .` first)
+- Searching for string literals, comments, or non-code text patterns
+- Reading specific file contents you already know you need (e.g., reading a config file, reading a file to edit it)
 - The `indexer` command is not available
+
+**Self-check**: If you are about to grep for a function/class/symbol definition, STOP and use `indexer search` instead. If you are about to read a whole file to understand its structure, use `indexer skeleton` instead. If you need to trace callers or references, use `indexer callers`/`indexer refs` instead of grepping for the function name.
+
+**When spawning agents**: Always instruct agents to use `indexer` commands via Bash for code exploration. Agents do not automatically follow these instructions unless explicitly told.
 
 ### Quick reference
 

@@ -50,9 +50,19 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 - **No scipy/numpy**: PageRank uses pure-Python power iteration to keep the dependency footprint small for global CLI installation.
 - **Self-ignoring `.indexer/`**: The `Database.connect()` method auto-creates a `.indexer/.gitignore` containing `*`, so the index directory is ignored even without project-level `.gitignore` configuration.
 
-## Codebase Navigation — Indexer
+## Codebase Navigation — Indexer (MANDATORY)
 
-This project has a structural code index at `.indexer/index.db`. **Always prefer indexer commands over grep/glob/find for navigating this codebase.**
+**CRITICAL: You MUST use `indexer` commands instead of Grep, Glob, Read, find, or ls for code navigation. Do NOT use Grep/Glob/Read tools to explore code structure, find symbol definitions, trace callers, or understand file layouts.**
+
+The only exceptions where Grep/Glob/Read are acceptable:
+- The index hasn't been built (run `indexer init .` first)
+- Searching for string literals, comments, or non-code text patterns
+- Reading specific file contents you already know you need (e.g., reading a config file, reading a file to edit it)
+- The `indexer` command is not available
+
+**Self-check**: If you are about to grep for a function/class/symbol definition, STOP and use `indexer search` instead. If you are about to read a whole file to understand its structure, use `indexer skeleton` instead. If you need to trace callers or references, use `indexer callers`/`indexer refs` instead of grepping for the function name.
+
+**When spawning agents**: Always instruct agents to use `indexer` commands via Bash for code exploration. Agents do not automatically follow these instructions unless explicitly told.
 
 ### Quick reference
 
@@ -68,9 +78,3 @@ This project has a structural code index at `.indexer/index.db`. **Always prefer
 | File skeleton | `indexer skeleton <file>` |
 | Full repo skeleton | `indexer skeleton` |
 | Index stats | `indexer stats` |
-
-### When to fall back to grep/glob
-
-- Searching for string literals, comments, or non-symbol text patterns
-- Searching within non-structural content (config files, prose)
-- The `indexer` command is not available
