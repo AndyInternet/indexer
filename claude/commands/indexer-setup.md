@@ -127,13 +127,7 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
    ```
    If `.claude/settings.json` already exists, merge the `permissions.allow` and `hooks` keys — do not overwrite other settings.
 
-4. Check if `.indexer/` is in the project's `.gitignore`. If not, append it:
-
-```bash
-grep -q '\.indexer' .gitignore 2>/dev/null || echo '.indexer/' >> .gitignore
-```
-
-5. Tell the user:
+4. Tell the user:
    - CLAUDE.md has been updated with comprehensive indexer instructions
    - A PreToolUse hook has been installed to remind agents about indexer commands
    - Claude will now prefer `indexer` commands over grep/glob in this project

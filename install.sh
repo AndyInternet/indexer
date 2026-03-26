@@ -4,7 +4,7 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
-COMMANDS_SRC="$REPO_DIR/.claude/commands"
+COMMANDS_SRC="$REPO_DIR/claude/commands"
 COMMANDS_DST="$HOME/.claude/commands"
 
 # 1. Install/upgrade the CLI tool

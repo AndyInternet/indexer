@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv tool:*)",
+      "Bash(indexer init:*)",
+      "Bash(indexer search:*)",
+      "Bash(indexer refs:*)",
+      "Bash(indexer grep:*)",
+      "Bash(indexer skeleton:*)",
+      "Bash(indexer tree:*)",
+      "Bash(indexer map:*)",
+      "Bash(indexer impl:*)",
+      "Bash(indexer find:*)",
+      "Bash(ruff check:*)",
+      "Bash(uv run:*)"
+    ]
+  }
+}

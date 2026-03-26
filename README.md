@@ -252,9 +252,9 @@ Indexer ships with three [Claude Code commands](https://docs.anthropic.com/en/do
 ./install.sh
 
 # Or copy commands manually
-cp /path/to/indexer/.claude/commands/indexer-index.md ~/.claude/commands/
-cp /path/to/indexer/.claude/commands/indexer-setup.md ~/.claude/commands/
-cp /path/to/indexer/.claude/commands/indexer-explore.md ~/.claude/commands/
+cp /path/to/indexer/claude/commands/indexer-index.md ~/.claude/commands/
+cp /path/to/indexer/claude/commands/indexer-setup.md ~/.claude/commands/
+cp /path/to/indexer/claude/commands/indexer-explore.md ~/.claude/commands/
 ```
 
 ### `/indexer-index`
