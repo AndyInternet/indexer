@@ -30,7 +30,7 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -141,7 +141,13 @@ def _parse_find_paths(find_output: str) -> list[str]:
 
 
 def _query_top_symbols(project: Path, limit: int = 20) -> list[tuple[str, int]]:
-    """Query the index DB directly for the most-referenced symbol names."""
+    """Query the index DB for well-referenced symbols that have actual definitions.
+
+    Joins refs against the symbols table so we only pick names that correspond
+    to real function/method/class definitions — not ubiquitous variable names
+    like ``err``, ``ctx``, or ``sql`` that dominate by raw reference count but
+    don't represent realistic code-navigation tasks.
+    """
     import sqlite3
 
     db_path = project / ".indexer" / "index.db"
@@ -151,10 +157,14 @@ def _query_top_symbols(project: Path, limit: int = 20) -> list[tuple[str, int]]:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        """SELECT r.to_symbol_name AS name, COUNT(*) AS ref_count
-           FROM refs r
-           GROUP BY r.to_symbol_name
-           HAVING LENGTH(r.to_symbol_name) > 2 AND LENGTH(r.to_symbol_name) <= 40
+        """SELECT s.name, COUNT(DISTINCT r.from_file_id) AS ref_count
+           FROM symbols s
+           JOIN refs r ON r.to_symbol_name = s.name
+           WHERE s.kind IN ('function', 'method', 'class', 'type', 'interface')
+             AND LENGTH(s.name) > 3
+             AND LENGTH(s.name) <= 40
+           GROUP BY s.name
+           HAVING ref_count >= 2
            ORDER BY ref_count DESC
            LIMIT ?""",
         (limit,),
@@ -264,12 +274,15 @@ def _query_grep_term(project: Path) -> str | None:
 
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
-    # Pick the most-referenced symbol name — it's likely to appear in many files as text too
+    # Pick a well-referenced symbol that has a real definition — not generic names
     rows = conn.execute(
-        """SELECT r.to_symbol_name AS name, COUNT(DISTINCT r.from_file_id) AS file_count
-           FROM refs r
-           GROUP BY r.to_symbol_name
-           HAVING file_count >= 3 AND LENGTH(r.to_symbol_name) BETWEEN 4 AND 20
+        """SELECT s.name, COUNT(DISTINCT r.from_file_id) AS file_count
+           FROM symbols s
+           JOIN refs r ON r.to_symbol_name = s.name
+           WHERE s.kind IN ('function', 'method', 'class', 'type', 'interface')
+             AND LENGTH(s.name) BETWEEN 4 AND 30
+           GROUP BY s.name
+           HAVING file_count >= 3
            ORDER BY file_count DESC
            LIMIT 5""",
     ).fetchall()
@@ -713,14 +726,14 @@ def main():
         return
 
     print(f"Running with model: {args.model}")
-    print(f"Each task runs twice (indexer mode + baseline mode)")
+    print("Each task runs twice (indexer mode + baseline mode)")
     print()
 
     comparisons: list[Comparison] = []
     for i, task in enumerate(tasks, 1):
         print(f"[{i}/{len(tasks)}] {task.name}")
 
-        print(f"  Running indexer mode...", end="", flush=True)
+        print("  Running indexer mode...", end="", flush=True)
         idx_result = run_agent(task, "indexer", project, args.model)
         print(
             f" {idx_result.input_tokens + idx_result.output_tokens:,} tokens, "
@@ -729,7 +742,7 @@ def main():
             f"{'correct' if idx_result.correct else 'WRONG'}"
         )
 
-        print(f"  Running baseline mode...", end="", flush=True)
+        print("  Running baseline mode...", end="", flush=True)
         base_result = run_agent(task, "baseline", project, args.model)
         print(
             f" {base_result.input_tokens + base_result.output_tokens:,} tokens, "
