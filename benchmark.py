@@ -670,8 +670,8 @@ def main():
     )
     parser.add_argument("project", type=Path, help="Path to the project to benchmark")
     parser.add_argument(
-        "--model", default="claude-haiku-4-5-20251001",
-        help="Claude model to use (default: haiku for cost efficiency)",
+        "--model", default="claude-sonnet-4-6",
+        help="Claude model to use (default: sonnet for balance of quality and cost)",
     )
     parser.add_argument("--dry-run", action="store_true", help="Show tasks without running agents")
     parser.add_argument("--json", action="store_true", help="Output results as JSON")

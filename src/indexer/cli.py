@@ -11,6 +11,7 @@ from typing import Iterator
 import click
 
 from indexer.config import Config, load_or_create_config, save_config
+from indexer.error_log import ErrorLoggingGroup
 from indexer.db import Database, FileRecord, RefRecord, SymbolRecord
 from indexer.freshness import ensure_fresh, save_freshness
 from indexer.parsing.extractors import extract_references, extract_symbols
@@ -190,7 +191,7 @@ def _resolve_references(db: Database, config: Config, files_to_index) -> None:
     db.connect().commit()
 
 
-@click.group()
+@click.group(cls=ErrorLoggingGroup)
 def main():
     """Indexer: AI-optimized codebase index generator."""
     pass
@@ -614,6 +615,7 @@ def tree(subpath: str, depth: int, path: str):
 
 @main.command("grep")
 @click.argument("pattern")
+@click.argument("file_arg", required=False, default=None)
 @click.option(
     "--ext", "-e", default=None, help="Comma-separated extensions (e.g. .yaml,.go)"
 )
@@ -637,6 +639,7 @@ def tree(subpath: str, depth: int, path: str):
 )
 def grep_cmd(
     pattern: str,
+    file_arg: str | None,
     ext: str | None,
     file_pattern: str | None,
     ignore_case: bool,
@@ -647,6 +650,14 @@ def grep_cmd(
     """Full-text search across all indexed files, ranked by importance."""
     from indexer.graph.builder import build_dependency_graph
     from indexer.graph.pagerank import compute_pagerank
+
+    # Allow `indexer grep PATTERN FILE` as shorthand for --file-pattern
+    if file_arg and not file_pattern:
+        file_pattern = file_arg
+    elif file_arg and file_pattern:
+        raise click.UsageError(
+            "Cannot specify both a positional file argument and --file-pattern"
+        )
 
     config = _get_config(path)
 

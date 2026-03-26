@@ -10,6 +10,7 @@ from pathlib import Path
 INDEXER_DIR = ".indexer"
 DB_NAME = "index.db"
 CONFIG_NAME = "config.json"
+ERROR_LOG_NAME = "errors.log"
 
 # These patterns seed a new config file. Once the config file exists,
 # it is the sole source of truth — this list is never used at runtime.

@@ -247,3 +247,32 @@ def populated_db(db: Database) -> Database:
 def config(tmp_path: Path) -> Config:
     """A Config instance pointing to tmp_path with default patterns."""
     return Config(root=tmp_path, ignore=[".git", ".indexer", "__pycache__"])
+
+
+_real_log_error = None
+
+
+def _get_real_log_error():
+    global _real_log_error
+    if _real_log_error is None:
+        from indexer.error_log import log_error
+
+        _real_log_error = log_error
+    return _real_log_error
+
+
+@pytest.fixture(autouse=True)
+def _suppress_error_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent tests from writing to .indexer/errors.log.
+
+    Tests that need real error logging (test_error_log.py) should override
+    this by using the ``enable_error_log`` fixture.
+    """
+    _get_real_log_error()  # cache before patching
+    monkeypatch.setattr("indexer.error_log.log_error", lambda *_a, **_kw: None)
+
+
+@pytest.fixture
+def enable_error_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Re-enable error logging for tests that explicitly need it."""
+    monkeypatch.setattr("indexer.error_log.log_error", _get_real_log_error())
