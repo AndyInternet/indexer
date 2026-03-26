@@ -1,10 +1,16 @@
-"""Tests for scanner with allow-list support."""
+"""Tests for scanner with allow-list support and change detection."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from indexer.scanner import _should_descend, scan_directory
+from indexer.scanner import (
+    FileInfo,
+    _hash_file,
+    _should_descend,
+    detect_changes,
+    scan_directory,
+)
 
 
 # -- _should_descend tests --
@@ -176,3 +182,73 @@ def test_scan_allow_with_glob_extension(tmp_path: Path):
     paths = {f.path for f in files}
     assert "vendor/lib/a.go" in paths
     assert "vendor/lib/b.py" not in paths
+
+
+# -- detect_changes tests --
+
+
+def _make_file_info(path: str, content_hash: str) -> FileInfo:
+    return FileInfo(
+        path=path,
+        abs_path=Path(path),
+        content_hash=content_hash,
+        last_modified=1.0,
+        byte_size=10,
+        line_count=1,
+    )
+
+
+def test_detect_changes_added():
+    """New files appear in the added list."""
+    fi = _make_file_info("new.py", "aaa")
+    changes = detect_changes({}, [fi])
+    assert len(changes.added) == 1
+    assert changes.added[0].path == "new.py"
+
+
+def test_detect_changes_modified():
+    """Changed hash appears in the modified list."""
+    fi = _make_file_info("a.py", "new_hash")
+    changes = detect_changes({"a.py": "old_hash"}, [fi])
+    assert len(changes.modified) == 1
+    assert changes.modified[0].path == "a.py"
+
+
+def test_detect_changes_deleted():
+    """Removed files appear in the deleted list."""
+    changes = detect_changes({"gone.py": "aaa"}, [])
+    assert changes.deleted == ["gone.py"]
+
+
+def test_detect_changes_unchanged():
+    """Same hash appears in the unchanged list."""
+    fi = _make_file_info("a.py", "same")
+    changes = detect_changes({"a.py": "same"}, [fi])
+    assert changes.unchanged == ["a.py"]
+    assert changes.added == []
+    assert changes.modified == []
+
+
+def test_detect_changes_mixed():
+    """Combination of added, modified, deleted, and unchanged."""
+    existing = {"keep.py": "aaa", "change.py": "old", "remove.py": "xxx"}
+    scanned = [
+        _make_file_info("keep.py", "aaa"),  # unchanged
+        _make_file_info("change.py", "new"),  # modified
+        _make_file_info("brand_new.py", "bbb"),  # added
+    ]
+    changes = detect_changes(existing, scanned)
+    assert len(changes.added) == 1
+    assert len(changes.modified) == 1
+    assert changes.deleted == ["remove.py"]
+    assert changes.unchanged == ["keep.py"]
+
+
+def test_hash_file_deterministic(tmp_path: Path):
+    """Same content produces the same hash."""
+    f = tmp_path / "test.txt"
+    f.write_text("hello world")
+    h1 = _hash_file(f)
+    h2 = _hash_file(f)
+    assert h1 == h2
+    assert len(h1) == 64  # sha256 hex digest length
