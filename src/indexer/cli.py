@@ -368,7 +368,8 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-def search(query: str, path: str):
+@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+def search(query: str, path: str, limit: int):
     """Search symbols by name."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
@@ -378,12 +379,18 @@ def search(query: str, path: str):
         click.echo(f"No symbols matching '{query}'")
         sys.exit(0)
 
-    for sym, file_path in results:
+    total = len(results)
+    display = results if limit == 0 else results[:limit]
+
+    for sym, file_path in display:
         click.echo(f"  {sym.kind:10} {sym.name:30} {file_path}:{sym.line_start}")
         if sym.signature:
             click.echo(f"             {sym.signature}")
 
-    click.echo(f"\n{len(results)} result(s)")
+    if limit and total > limit:
+        click.echo(f"\nShowing {limit} of {total} result(s). Use --limit 0 to see all.")
+    else:
+        click.echo(f"\n{total} result(s)")
     db.close()
 
 
@@ -392,7 +399,8 @@ def search(query: str, path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-def refs(symbol: str, path: str):
+@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+def refs(symbol: str, path: str, limit: int):
     """Find all references to a symbol."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
@@ -402,10 +410,18 @@ def refs(symbol: str, path: str):
         click.echo(f"No references to '{symbol}'")
         sys.exit(0)
 
-    for ref, file_path in results:
+    total = len(results)
+    display = results if limit == 0 else results[:limit]
+
+    for ref, file_path in display:
         click.echo(f"  {file_path}:{ref.line}")
 
-    click.echo(f"\n{len(results)} reference(s)")
+    if limit and total > limit:
+        click.echo(
+            f"\nShowing {limit} of {total} reference(s). Use --limit 0 to see all."
+        )
+    else:
+        click.echo(f"\n{total} reference(s)")
     db.close()
 
 
@@ -414,7 +430,8 @@ def refs(symbol: str, path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-def callers(symbol: str, path: str):
+@click.option("--limit", "-l", default=50, help="Max files to display (0=unlimited)")
+def callers(symbol: str, path: str, limit: int):
     """Find all callers of a function."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
@@ -429,11 +446,20 @@ def callers(symbol: str, path: str):
     for ref, file_path in results:
         by_file.setdefault(file_path, []).append(ref.line or 0)
 
-    for file_path, lines in sorted(by_file.items()):
+    sorted_files = sorted(by_file.items())
+    total_files = len(sorted_files)
+    display = sorted_files if limit == 0 else sorted_files[:limit]
+
+    for file_path, lines in display:
         line_str = ", ".join(str(ln) for ln in sorted(lines) if ln > 0)
         click.echo(f"  {file_path}: lines {line_str}")
 
-    click.echo(f"\n{len(by_file)} file(s), {len(results)} reference(s)")
+    if limit and total_files > limit:
+        click.echo(
+            f"\nShowing {limit} of {total_files} file(s), {len(results)} total reference(s). Use --limit 0 to see all."
+        )
+    else:
+        click.echo(f"\n{total_files} file(s), {len(results)} reference(s)")
     db.close()
 
 
@@ -510,7 +536,8 @@ def stats(path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-def find_cmd(pattern: str, entry_type: str | None, path: str):
+@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+def find_cmd(pattern: str, entry_type: str | None, path: str, limit: int):
     """Find files or directories matching a glob pattern."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
@@ -546,9 +573,17 @@ def find_cmd(pattern: str, entry_type: str | None, path: str):
     if not matches:
         click.echo(f"No matches for '{pattern}'")
     else:
-        for m in sorted(matches):
+        sorted_matches = sorted(matches)
+        total = len(sorted_matches)
+        display = sorted_matches if limit == 0 else sorted_matches[:limit]
+        for m in display:
             click.echo(f"  {m}")
-        click.echo(f"\n{len(matches)} result(s)")
+        if limit and total > limit:
+            click.echo(
+                f"\nShowing {limit} of {total} result(s). Use --limit 0 to see all."
+            )
+        else:
+            click.echo(f"\n{total} result(s)")
 
     db.close()
 
