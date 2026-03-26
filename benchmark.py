@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import subprocess
 import sys
 import time
@@ -304,10 +305,12 @@ def _query_grep_term(project: Path) -> str | None:
            GROUP BY s.name
            HAVING file_count >= 3
            ORDER BY file_count DESC
-           LIMIT 5""",
+           LIMIT 10""",
     ).fetchall()
     conn.close()
-    return rows[0]["name"] if rows else None
+    if not rows:
+        return None
+    return random.choice(rows)["name"]
 
 
 def generate_tasks(project: Path) -> list[Task]:
@@ -326,9 +329,10 @@ def generate_tasks(project: Path) -> list[Task]:
         print("Error: no symbols found in index", file=sys.stderr)
         sys.exit(1)
 
-    print(
-        f"  Top symbols by reference count: {', '.join(f'{s}({c})' for s, c in top_symbols[:5])}"
-    )
+    # Randomly pick from the top 10 to avoid always benchmarking the same symbol
+    top_symbols = random.sample(top_symbols, min(10, len(top_symbols)))
+
+    print(f"  Selected symbols: {', '.join(f'{s}({c})' for s, c in top_symbols[:5])}")
 
     # Pick the highest-ranked file
     target_file = _query_top_file(project)
