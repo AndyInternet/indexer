@@ -5,7 +5,9 @@ set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 COMMANDS_SRC="$REPO_DIR/claude/commands"
+HOOKS_SRC="$REPO_DIR/claude/hooks"
 COMMANDS_DST="$HOME/.claude/commands"
+HOOKS_DST="$HOME/.claude/hooks"
 
 # 1. Install/upgrade the CLI tool
 echo "Installing indexer CLI tool..."
@@ -21,7 +23,14 @@ for cmd_file in "$COMMANDS_SRC"/*.md; do
   echo "  ${cmd_name%.md}"
 done
 
-# 3. Allow-list indexer commands globally (read-only, non-destructive)
+# 3. Install PreToolUse hook
+echo "Installing PreToolUse hook..."
+mkdir -p "$HOOKS_DST"
+cp "$HOOKS_SRC/pretool-indexer-hint.sh" "$HOOKS_DST/pretool-indexer-hint.sh"
+chmod +x "$HOOKS_DST/pretool-indexer-hint.sh"
+echo "  Done: $HOOKS_DST/pretool-indexer-hint.sh"
+
+# 4. Allow-list indexer commands and register hook globally
 GLOBAL_SETTINGS="$HOME/.claude/settings.json"
 INDEXER_PERMISSIONS=(
   "Bash(indexer map:*)"
@@ -41,7 +50,7 @@ INDEXER_PERMISSIONS=(
 )
 
 if command -v jq >/dev/null 2>&1; then
-  echo "Adding indexer permissions to global Claude settings..."
+  echo "Adding indexer permissions and hook to global Claude settings..."
   if [ -f "$GLOBAL_SETTINGS" ]; then
     existing="$(<"$GLOBAL_SETTINGS")"
   else
@@ -55,14 +64,23 @@ if command -v jq >/dev/null 2>&1; then
     perms_json=$(echo "$perms_json" | jq --arg p "$perm" '. + [$p]')
   done
 
-  # Merge: add any permissions not already present
-  echo "$existing" | jq --argjson new "$perms_json" '
+  # Merge: add permissions and PreToolUse hook
+  echo "$existing" | jq --argjson new "$perms_json" --arg hook_cmd "bash $HOOKS_DST/pretool-indexer-hint.sh" '
     .permissions.allow = ((.permissions.allow // []) + $new | unique)
+    | .hooks.PreToolUse = (
+        [(.hooks.PreToolUse // [])[] | select(
+          (.hooks // []) | any(.command | test("pretool-indexer-hint")) | not
+        )]
+        + [{
+            "matcher": "Grep|Glob",
+            "hooks": [{"type": "command", "command": $hook_cmd}]
+          }]
+      )
   ' > "$GLOBAL_SETTINGS"
   echo "  Done: $GLOBAL_SETTINGS"
 else
-  echo "Warning: jq not found — skipping global permission setup."
-  echo "  Manually add indexer permissions to $GLOBAL_SETTINGS or run /indexer-setup in each project."
+  echo "Warning: jq not found — skipping global settings setup."
+  echo "  Manually add indexer permissions and hook to $GLOBAL_SETTINGS or run /indexer-setup in each project."
 fi
 
 echo "Done."

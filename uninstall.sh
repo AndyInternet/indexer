@@ -33,19 +33,36 @@ for skill in indexer-setup indexer-index indexer-explore; do
   fi
 done
 
-# 4. Remove indexer permissions from global settings
+# 4. Remove PreToolUse hook
+HOOKS_DST="$HOME/.claude/hooks"
+echo "Removing PreToolUse hook..."
+if [ -f "$HOOKS_DST/pretool-indexer-hint.sh" ]; then
+  rm "$HOOKS_DST/pretool-indexer-hint.sh"
+  echo "  Removed $HOOKS_DST/pretool-indexer-hint.sh"
+else
+  echo "  Not found (already removed)."
+fi
+
+# 5. Remove indexer permissions and hook from global settings
 if command -v jq >/dev/null 2>&1 && [ -f "$GLOBAL_SETTINGS" ]; then
-  echo "Removing indexer permissions from global Claude settings..."
+  echo "Removing indexer permissions and hook from global Claude settings..."
   jq '
     if .permissions.allow then
       .permissions.allow = [.permissions.allow[] | select(startswith("Bash(indexer ") | not)]
     else . end
+    | if .hooks.PreToolUse then
+        .hooks.PreToolUse = [.hooks.PreToolUse[] | select(
+          (.hooks // []) | any(.command | test("pretool-indexer-hint")) | not
+        )]
+        | if (.hooks.PreToolUse | length) == 0 then del(.hooks.PreToolUse) else . end
+        | if (.hooks | length) == 0 then del(.hooks) else . end
+      else . end
   ' "$GLOBAL_SETTINGS" > "$GLOBAL_SETTINGS.tmp" && mv "$GLOBAL_SETTINGS.tmp" "$GLOBAL_SETTINGS"
   echo "  Done: $GLOBAL_SETTINGS"
 else
   if [ -f "$GLOBAL_SETTINGS" ]; then
-    echo "Warning: jq not found — skipping permission removal."
-    echo "  Manually remove indexer permissions from $GLOBAL_SETTINGS"
+    echo "Warning: jq not found — skipping settings cleanup."
+    echo "  Manually remove indexer permissions and hook from $GLOBAL_SETTINGS"
   fi
 fi
 

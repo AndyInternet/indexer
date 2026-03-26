@@ -43,17 +43,17 @@ Indexer generates a local SQLite index of your codebase containing:
 ### Install globally
 
 ```bash
-# Install or upgrade everything (CLI tool + Claude commands) with one command
+# Install or upgrade everything (CLI tool + Claude commands + permissions)
 ./install.sh
-
-# Or install just the CLI tool manually
-uv tool install /path/to/indexer
-
-# Or with pip
-pip install /path/to/indexer
 ```
 
 Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades both the CLI and commands in place.
+
+To uninstall:
+
+```bash
+./uninstall.sh
+```
 
 ### Index a codebase
 
@@ -248,13 +248,8 @@ Indexer ships with three [Claude Code commands](https://docs.anthropic.com/en/do
 ### Install the commands
 
 ```bash
-# Install/upgrade CLI + commands together
+# install.sh handles CLI tool, commands, and permissions in one step
 ./install.sh
-
-# Or copy commands manually
-cp /path/to/indexer/claude/commands/indexer-index.md ~/.claude/commands/
-cp /path/to/indexer/claude/commands/indexer-setup.md ~/.claude/commands/
-cp /path/to/indexer/claude/commands/indexer-explore.md ~/.claude/commands/
 ```
 
 ### `/indexer-index`

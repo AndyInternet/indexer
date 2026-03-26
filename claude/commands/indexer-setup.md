@@ -89,27 +89,9 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
    c. Make it executable: `chmod +x .claude/hooks/pretool-indexer-hint.sh`
 
-   d. Create or update `.claude/settings.json` to register the hook and allow-list all indexer commands (they are read-only and non-destructive):
+   d. Create or update `.claude/settings.json` to register the hook:
    ```json
    {
-     "permissions": {
-       "allow": [
-         "Bash(indexer map:*)",
-         "Bash(indexer search:*)",
-         "Bash(indexer refs:*)",
-         "Bash(indexer callers:*)",
-         "Bash(indexer impl:*)",
-         "Bash(indexer skeleton:*)",
-         "Bash(indexer grep:*)",
-         "Bash(indexer find:*)",
-         "Bash(indexer tree:*)",
-         "Bash(indexer stats:*)",
-         "Bash(indexer init:*)",
-         "Bash(indexer update:*)",
-         "Bash(indexer config:*)",
-         "Bash(indexer --help:*)"
-       ]
-     },
      "hooks": {
        "PreToolUse": [
          {
@@ -125,7 +107,7 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
      }
    }
    ```
-   If `.claude/settings.json` already exists, merge the `permissions.allow` and `hooks` keys — do not overwrite other settings.
+   If `.claude/settings.json` already exists, merge the `hooks` key — do not overwrite other settings. Do not add permissions here — they are installed globally by `install.sh`.
 
 4. Tell the user:
    - CLAUDE.md has been updated with comprehensive indexer instructions
