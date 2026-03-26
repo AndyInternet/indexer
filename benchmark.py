@@ -22,6 +22,7 @@ Usage:
 
 Requires: ANTHROPIC_API_KEY environment variable.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -38,19 +39,24 @@ from pathlib import Path
 # Task definitions
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class Task:
     """A concrete navigation task with verifiable ground truth."""
+
     name: str
     question: str
     expected: list[str]  # strings that should appear in a correct answer
     category: str  # symbol_lookup, caller_trace, file_understanding, text_search, file_discovery
-    min_matches: int | None = None  # override: how many expected must match (default: half)
+    min_matches: int | None = (
+        None  # override: how many expected must match (default: half)
+    )
 
 
 @dataclass
 class RunResult:
     """Result of running one task in one mode."""
+
     task_name: str
     mode: str  # "indexer" or "baseline"
     input_tokens: int
@@ -65,6 +71,7 @@ class RunResult:
 @dataclass
 class Comparison:
     """Side-by-side comparison of indexer vs baseline for one task."""
+
     task: Task
     indexer: RunResult
     baseline: RunResult
@@ -82,11 +89,16 @@ class Comparison:
 # Task generation — introspects the index for ground truth
 # ---------------------------------------------------------------------------
 
+
 def run_cmd(cmd: str, cwd: Path, timeout: int = 30) -> str:
     try:
         proc = subprocess.run(
-            cmd, shell=True, capture_output=True, text=True,
-            timeout=timeout, cwd=cwd,
+            cmd,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            cwd=cwd,
         )
         return proc.stdout.strip()
     except subprocess.TimeoutExpired:
@@ -132,7 +144,12 @@ def _parse_find_paths(find_output: str) -> list[str]:
     paths = []
     for line in find_output.splitlines():
         stripped = line.strip()
-        if stripped and "/" in stripped and not stripped.startswith(("No ", "Found")) and "result" not in stripped:
+        if (
+            stripped
+            and "/" in stripped
+            and not stripped.startswith(("No ", "Found"))
+            and "result" not in stripped
+        ):
             # Skip directories (end with /)
             if stripped.endswith("/"):
                 continue
@@ -183,7 +200,9 @@ def _query_top_file(project: Path) -> str | None:
     return None
 
 
-def _query_file_with_most_symbols(project: Path, min_line_count: int = 100) -> str | None:
+def _query_file_with_most_symbols(
+    project: Path, min_line_count: int = 100
+) -> str | None:
     """Find a file with many symbols and enough lines for skeleton to shine."""
     import sqlite3
 
@@ -248,6 +267,7 @@ def _query_common_substring(project: Path) -> str | None:
     conn.close()
 
     from collections import Counter
+
     word_counts: Counter[str] = Counter()
     for (path,) in rows:
         name = Path(path).stem.lower()
@@ -306,12 +326,16 @@ def generate_tasks(project: Path) -> list[Task]:
         print("Error: no symbols found in index", file=sys.stderr)
         sys.exit(1)
 
-    print(f"  Top symbols by reference count: {', '.join(f'{s}({c})' for s, c in top_symbols[:5])}")
+    print(
+        f"  Top symbols by reference count: {', '.join(f'{s}({c})' for s, c in top_symbols[:5])}"
+    )
 
     # Pick the highest-ranked file
     target_file = _query_top_file(project)
     if not target_file:
-        print("Error: could not identify a target file from indexer map", file=sys.stderr)
+        print(
+            "Error: could not identify a target file from indexer map", file=sys.stderr
+        )
         sys.exit(1)
 
     # --- Task 1: Symbol lookup ---
@@ -321,12 +345,14 @@ def generate_tasks(project: Path) -> list[Task]:
         if out and "No matches" not in out:
             expected = list(dict.fromkeys(_parse_search_paths(out)))  # dedupe
             if expected:
-                tasks.append(Task(
-                    name=f"symbol_lookup:{sym_name}",
-                    question=f"Find where the function or method `{sym_name}` is defined in this codebase. Give me the exact file path and line number.",
-                    expected=expected[:3],
-                    category="symbol_lookup",
-                ))
+                tasks.append(
+                    Task(
+                        name=f"symbol_lookup:{sym_name}",
+                        question=f"Find where the function or method `{sym_name}` is defined in this codebase. Give me the exact file path and line number.",
+                        expected=expected[:3],
+                        category="symbol_lookup",
+                    )
+                )
                 break
 
     # --- Task 2: Caller trace ---
@@ -338,12 +364,14 @@ def generate_tasks(project: Path) -> list[Task]:
         if out and "No callers" not in out and "No matches" not in out:
             caller_files = _parse_caller_paths(out)
             if len(caller_files) >= 2:
-                tasks.append(Task(
-                    name=f"caller_trace:{sym_name}",
-                    question=f"List all files that call or invoke `{sym_name}`. Just the file paths.",
-                    expected=caller_files[:5],
-                    category="caller_trace",
-                ))
+                tasks.append(
+                    Task(
+                        name=f"caller_trace:{sym_name}",
+                        question=f"List all files that call or invoke `{sym_name}`. Just the file paths.",
+                        expected=caller_files[:5],
+                        category="caller_trace",
+                    )
+                )
                 break
 
     # --- Task 3: File understanding ---
@@ -351,12 +379,14 @@ def generate_tasks(project: Path) -> list[Task]:
     structure_file = _query_file_with_most_symbols(project) or target_file
     file_symbols = _query_file_symbols(project, structure_file)
     if file_symbols:
-        tasks.append(Task(
-            name=f"file_structure:{Path(structure_file).name}",
-            question=f"What are the main functions, methods, or classes defined in `{structure_file}`? List their names.",
-            expected=file_symbols[:8],
-            category="file_understanding",
-        ))
+        tasks.append(
+            Task(
+                name=f"file_structure:{Path(structure_file).name}",
+                question=f"What are the main functions, methods, or classes defined in `{structure_file}`? List their names.",
+                expected=file_symbols[:8],
+                category="file_understanding",
+            )
+        )
 
     # --- Task 4: Text search ---
     # Many files may match; give a large expected set and require just 1 hit
@@ -366,13 +396,15 @@ def generate_tasks(project: Path) -> list[Task]:
         if out:
             grep_files = _parse_grep_paths(out)
             if len(grep_files) >= 2:
-                tasks.append(Task(
-                    name=f"text_search:{grep_term}",
-                    question=f'Find all files containing "{grep_term}". List the file paths.',
-                    expected=grep_files[:20],
-                    category="text_search",
-                    min_matches=1,
-                ))
+                tasks.append(
+                    Task(
+                        name=f"text_search:{grep_term}",
+                        question=f'Find all files containing "{grep_term}". List the file paths.',
+                        expected=grep_files[:20],
+                        category="text_search",
+                        min_matches=1,
+                    )
+                )
 
     # --- Task 5: File discovery ---
     # Many files may match; give a large expected set and require just 1 hit
@@ -382,13 +414,15 @@ def generate_tasks(project: Path) -> list[Task]:
         if out and "No matches" not in out:
             find_files = _parse_find_paths(out)
             if find_files:
-                tasks.append(Task(
-                    name=f"file_discovery:{find_term}",
-                    question=f'Find all files with "{find_term}" in their name. List the file paths.',
-                    expected=find_files[:30],
-                    category="file_discovery",
-                    min_matches=1,
-                ))
+                tasks.append(
+                    Task(
+                        name=f"file_discovery:{find_term}",
+                        question=f'Find all files with "{find_term}" in their name. List the file paths.',
+                        expected=find_files[:30],
+                        category="file_discovery",
+                        min_matches=1,
+                    )
+                )
 
     return tasks
 
@@ -443,8 +477,12 @@ def execute_bash(command: str, cwd: Path) -> str:
     """Execute a bash command with safety limits."""
     try:
         proc = subprocess.run(
-            command, shell=True, capture_output=True, text=True,
-            timeout=30, cwd=cwd,
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=cwd,
         )
         output = proc.stdout + proc.stderr
         # Truncate very long output to avoid blowing up context
@@ -511,11 +549,13 @@ def run_agent(
                 else:
                     output = execute_bash(cmd, project)
 
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": output or "(no output)",
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": output or "(no output)",
+                    }
+                )
 
         if tool_results:
             messages.append({"role": "user", "content": tool_results})
@@ -526,7 +566,11 @@ def run_agent(
 
     # Extract final answer text
     answer_parts = []
-    for block in messages[-1].get("content", []) if isinstance(messages[-1], dict) else messages[-1]["content"]:
+    for block in (
+        messages[-1].get("content", [])
+        if isinstance(messages[-1], dict)
+        else messages[-1]["content"]
+    ):
         if hasattr(block, "text"):
             answer_parts.append(block.text)
         elif isinstance(block, dict) and block.get("type") == "text":
@@ -536,8 +580,10 @@ def run_agent(
     # If the last message was a tool result, pull text from the assistant message before it
     if not answer:
         for msg in reversed(messages):
-            content = msg.get("content", []) if isinstance(msg, dict) else msg["content"]
-            for block in (content if isinstance(content, list) else [content]):
+            content = (
+                msg.get("content", []) if isinstance(msg, dict) else msg["content"]
+            )
+            for block in content if isinstance(content, list) else [content]:
                 if hasattr(block, "text"):
                     answer = block.text
                     break
@@ -558,7 +604,11 @@ def run_agent(
         filename = Path(exp).name.lower()
         if exp_lower in answer_lower or filename in answer_lower:
             matches += 1
-    threshold = task.min_matches if task.min_matches is not None else max(1, len(unique_expected) // 2)
+    threshold = (
+        task.min_matches
+        if task.min_matches is not None
+        else max(1, len(unique_expected) // 2)
+    )
     correct = matches >= threshold
 
     return RunResult(
@@ -578,6 +628,7 @@ def run_agent(
 # Reporting
 # ---------------------------------------------------------------------------
 
+
 def print_table(comparisons: list[Comparison]) -> None:
     print()
     header = (
@@ -587,7 +638,10 @@ def print_table(comparisons: list[Comparison]) -> None:
     print(header)
     print("─" * len(header))
 
-    totals = {"indexer": [0, 0, 0, 0, 0.0], "baseline": [0, 0, 0, 0, 0.0]}  # in, out, calls, turns, time
+    totals = {
+        "indexer": [0, 0, 0, 0, 0.0],
+        "baseline": [0, 0, 0, 0, 0.0],
+    }  # in, out, calls, turns, time
 
     for comp in comparisons:
         for r in [comp.indexer, comp.baseline]:
@@ -612,7 +666,8 @@ def print_table(comparisons: list[Comparison]) -> None:
         t = totals[mode]
         total = t[0] + t[1]
         correct_count = sum(
-            1 for c in comparisons
+            1
+            for c in comparisons
             for r in [c.indexer if mode == "indexer" else c.baseline]
             if r.correct
         )
@@ -626,50 +681,60 @@ def print_table(comparisons: list[Comparison]) -> None:
     base_total = totals["baseline"][0] + totals["baseline"][1]
     if base_total > 0:
         savings = (1 - idx_total / base_total) * 100
-        print(f"\n  Token reduction: {savings:+.0f}%  ({base_total:,} -> {idx_total:,})")
+        print(
+            f"\n  Token reduction: {savings:+.0f}%  ({base_total:,} -> {idx_total:,})"
+        )
     call_idx = totals["indexer"][2]
     call_base = totals["baseline"][2]
     if call_base > 0:
         call_savings = (1 - call_idx / call_base) * 100
-        print(f"  Tool call reduction: {call_savings:+.0f}%  ({call_base} -> {call_idx})")
+        print(
+            f"  Tool call reduction: {call_savings:+.0f}%  ({call_base} -> {call_idx})"
+        )
     time_idx = totals["indexer"][4]
     time_base = totals["baseline"][4]
     if time_base > 0:
         speed_improvement = (1 - time_idx / time_base) * 100
-        print(f"  Speed improvement: {speed_improvement:+.0f}%  ({time_base:.1f}s -> {time_idx:.1f}s)")
+        print(
+            f"  Speed improvement: {speed_improvement:+.0f}%  ({time_base:.1f}s -> {time_idx:.1f}s)"
+        )
     print()
 
 
 def to_json(comparisons: list[Comparison]) -> str:
     results = []
     for comp in comparisons:
-        results.append({
-            "task": comp.task.name,
-            "category": comp.task.category,
-            "question": comp.task.question,
-            "expected": comp.task.expected,
-            "indexer": {
-                "input_tokens": comp.indexer.input_tokens,
-                "output_tokens": comp.indexer.output_tokens,
-                "total_tokens": comp.indexer.input_tokens + comp.indexer.output_tokens,
-                "tool_calls": comp.indexer.tool_calls,
-                "turns": comp.indexer.turns,
-                "correct": comp.indexer.correct,
-                "elapsed_sec": comp.indexer.elapsed_sec,
-                "answer": comp.indexer.answer,
-            },
-            "baseline": {
-                "input_tokens": comp.baseline.input_tokens,
-                "output_tokens": comp.baseline.output_tokens,
-                "total_tokens": comp.baseline.input_tokens + comp.baseline.output_tokens,
-                "tool_calls": comp.baseline.tool_calls,
-                "turns": comp.baseline.turns,
-                "correct": comp.baseline.correct,
-                "elapsed_sec": comp.baseline.elapsed_sec,
-                "answer": comp.baseline.answer,
-            },
-            "token_savings_pct": round(comp.token_savings_pct, 1),
-        })
+        results.append(
+            {
+                "task": comp.task.name,
+                "category": comp.task.category,
+                "question": comp.task.question,
+                "expected": comp.task.expected,
+                "indexer": {
+                    "input_tokens": comp.indexer.input_tokens,
+                    "output_tokens": comp.indexer.output_tokens,
+                    "total_tokens": comp.indexer.input_tokens
+                    + comp.indexer.output_tokens,
+                    "tool_calls": comp.indexer.tool_calls,
+                    "turns": comp.indexer.turns,
+                    "correct": comp.indexer.correct,
+                    "elapsed_sec": comp.indexer.elapsed_sec,
+                    "answer": comp.indexer.answer,
+                },
+                "baseline": {
+                    "input_tokens": comp.baseline.input_tokens,
+                    "output_tokens": comp.baseline.output_tokens,
+                    "total_tokens": comp.baseline.input_tokens
+                    + comp.baseline.output_tokens,
+                    "tool_calls": comp.baseline.tool_calls,
+                    "turns": comp.baseline.turns,
+                    "correct": comp.baseline.correct,
+                    "elapsed_sec": comp.baseline.elapsed_sec,
+                    "answer": comp.baseline.answer,
+                },
+                "token_savings_pct": round(comp.token_savings_pct, 1),
+            }
+        )
     return json.dumps(results, indent=2)
 
 
@@ -677,19 +742,25 @@ def to_json(comparisons: list[Comparison]) -> str:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Benchmark indexer vs traditional tools with a real Claude agent",
     )
     parser.add_argument("project", type=Path, help="Path to the project to benchmark")
     parser.add_argument(
-        "--model", default="claude-sonnet-4-6",
+        "--model",
+        default="claude-sonnet-4-6",
         help="Claude model to use (default: sonnet for balance of quality and cost)",
     )
-    parser.add_argument("--dry-run", action="store_true", help="Show tasks without running agents")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Show tasks without running agents"
+    )
     parser.add_argument("--json", action="store_true", help="Output results as JSON")
     parser.add_argument(
-        "--tasks", type=str, default=None,
+        "--tasks",
+        type=str,
+        default=None,
         help="Comma-separated task categories to run (symbol_lookup,caller_trace,file_understanding,text_search,file_discovery)",
     )
     args = parser.parse_args()
@@ -699,7 +770,9 @@ def main():
         sys.exit(1)
 
     if not args.dry_run and not os.environ.get("ANTHROPIC_API_KEY"):
-        print("Error: ANTHROPIC_API_KEY environment variable is required", file=sys.stderr)
+        print(
+            "Error: ANTHROPIC_API_KEY environment variable is required", file=sys.stderr
+        )
         sys.exit(1)
 
     project = args.project.resolve()
@@ -751,7 +824,9 @@ def main():
             f"{'correct' if base_result.correct else 'WRONG'}"
         )
 
-        comparisons.append(Comparison(task=task, indexer=idx_result, baseline=base_result))
+        comparisons.append(
+            Comparison(task=task, indexer=idx_result, baseline=base_result)
+        )
 
     if args.json:
         print(to_json(comparisons))
