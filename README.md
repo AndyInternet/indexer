@@ -43,7 +43,7 @@ Indexer generates a local SQLite index of your codebase containing:
 ### Install globally
 
 ```bash
-# Install or upgrade everything (CLI tool + Claude skills) with one command
+# Install or upgrade everything (CLI tool + Claude commands) with one command
 ./install.sh
 
 # Or install just the CLI tool manually
@@ -53,7 +53,7 @@ uv tool install /path/to/indexer
 pip install /path/to/indexer
 ```
 
-Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades both the CLI and skills in place.
+Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades both the CLI and commands in place.
 
 ### Index a codebase
 
@@ -243,18 +243,18 @@ Files are tracked by SHA-256 content hash, so only changed files are re-parsed. 
 
 ## Claude Code Integration
 
-Indexer ships with three [Claude Code skills](https://code.claude.com/docs/en/skills) and a PreToolUse hook that can be installed globally.
+Indexer ships with three [Claude Code commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) and a PreToolUse hook that can be installed globally.
 
-### Install the skills
+### Install the commands
 
 ```bash
-# Install/upgrade CLI + skills together
+# Install/upgrade CLI + commands together
 ./install.sh
 
-# Or copy skills manually
-cp -r /path/to/indexer/.claude/skills/indexer-index ~/.claude/skills/
-cp -r /path/to/indexer/.claude/skills/indexer-setup ~/.claude/skills/
-cp -r /path/to/indexer/.claude/skills/indexer-explore ~/.claude/skills/
+# Or copy commands manually
+cp /path/to/indexer/.claude/commands/indexer-index.md ~/.claude/commands/
+cp /path/to/indexer/.claude/commands/indexer-setup.md ~/.claude/commands/
+cp /path/to/indexer/.claude/commands/indexer-explore.md ~/.claude/commands/
 ```
 
 ### `/indexer-index`

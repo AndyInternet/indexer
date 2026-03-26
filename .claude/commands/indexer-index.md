@@ -1,14 +1,8 @@
----
-name: indexer-index
-description: Build or update the structural code index for the current project using the indexer CLI. Use when the user explicitly asks to index or re-index the codebase, or to force a full rebuild.
-disable-model-invocation: true
----
-
 # Index Codebase
 
 Build or incrementally update the structural code index for the current project.
 
-Note: The index is automatically built on first query and auto-updated on every query when the fingerprint changes (git HEAD, working tree status, or config changes). Non-git repos use file mtime fingerprinting. This skill is for explicit/forced indexing.
+Note: The index is automatically built on first query and auto-updated on every query when the fingerprint changes (git HEAD, working tree status, or config changes). Non-git repos use file mtime fingerprinting. This command is for explicit/forced indexing.
 
 ## Steps
 
