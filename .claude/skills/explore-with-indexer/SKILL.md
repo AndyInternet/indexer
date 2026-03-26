@@ -26,6 +26,7 @@ Spawn a focused exploration agent that uses `indexer` commands for all code navi
 > - `indexer grep <pattern> [--ext .yaml] [-i]` — full-text search across all files
 > - `indexer find <pattern> [--type f|d]` — find files/dirs by glob pattern
 > - `indexer tree [path] [--depth N]` — directory tree view
+> - `indexer config show|reset|ignore|allow|remove` — manage ignore/allow patterns
 >
 > Do NOT use Grep, Glob, find, or ls tools. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to examine.
 >

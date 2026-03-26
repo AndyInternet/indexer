@@ -8,7 +8,7 @@ disable-model-invocation: true
 
 Build or incrementally update the structural code index for the current project.
 
-Note: The index is automatically built on first query and auto-updated when the git branch or commit changes, or after 5 minutes of staleness. This skill is for explicit/forced indexing.
+Note: The index is automatically built on first query and auto-updated on every query when the fingerprint changes (git HEAD, working tree status, or config changes). Non-git repos use file mtime fingerprinting. This skill is for explicit/forced indexing.
 
 ## Steps
 

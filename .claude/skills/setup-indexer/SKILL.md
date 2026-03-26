@@ -56,7 +56,7 @@ Configure the current project so Claude prefers `indexer` commands over grep/glo
 
 Agents do NOT inherit these instructions. You MUST include this directive in every agent prompt:
 
-> **Use `indexer` commands via Bash for ALL code navigation in this repo. Available commands: `indexer search <name>`, `indexer refs <symbol>`, `indexer callers <symbol>`, `indexer impl <symbol>`, `indexer skeleton [file]`, `indexer map --tokens 2048`, `indexer grep <pattern> [--ext .yaml] [-i]`, `indexer find <pattern>`, `indexer tree [path]`. Do NOT use Grep, Glob, find, or ls. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to edit.**
+> **Use `indexer` commands via Bash for ALL code navigation in this repo. Available commands: `indexer search <name>`, `indexer refs <symbol>`, `indexer callers <symbol>`, `indexer impl <symbol>`, `indexer skeleton [file]`, `indexer map --tokens 2048`, `indexer grep <pattern> [--ext .yaml] [-i]`, `indexer find <pattern>`, `indexer tree [path]`, `indexer config show|reset|ignore|allow|remove`. Do NOT use Grep, Glob, find, or ls. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to edit.**
 
 Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
@@ -76,6 +76,11 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 | Find files by name | `indexer find <pattern> [--type f\|d]` |
 | Directory tree | `indexer tree [path] [--depth N]` |
 | Index stats | `indexer stats` |
+| View config | `indexer config show` |
+| Reset config to defaults | `indexer config reset` |
+| Add ignore pattern | `indexer config ignore <pattern>` |
+| Add allow pattern (overrides ignore) | `indexer config allow <pattern>` |
+| Remove ignore/allow pattern | `indexer config remove <pattern>` |
 ````
 
 3. Install the PreToolUse hook that reminds agents to use indexer:
@@ -90,9 +95,27 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
    c. Make it executable: `chmod +x .claude/hooks/pretool-indexer-hint.sh`
 
-   d. Create or update `.claude/settings.json` to register the hook:
+   d. Create or update `.claude/settings.json` to register the hook and allow-list all indexer commands (they are read-only and non-destructive):
    ```json
    {
+     "permissions": {
+       "allow": [
+         "Bash(indexer map:*)",
+         "Bash(indexer search:*)",
+         "Bash(indexer refs:*)",
+         "Bash(indexer callers:*)",
+         "Bash(indexer impl:*)",
+         "Bash(indexer skeleton:*)",
+         "Bash(indexer grep:*)",
+         "Bash(indexer find:*)",
+         "Bash(indexer tree:*)",
+         "Bash(indexer stats:*)",
+         "Bash(indexer init:*)",
+         "Bash(indexer update:*)",
+         "Bash(indexer config:*)",
+         "Bash(indexer --help:*)"
+       ]
+     },
      "hooks": {
        "PreToolUse": [
          {
@@ -108,7 +131,7 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
      }
    }
    ```
-   If `.claude/settings.json` already exists, merge the `hooks` key — do not overwrite other settings.
+   If `.claude/settings.json` already exists, merge the `permissions.allow` and `hooks` keys — do not overwrite other settings.
 
 4. Check if `.indexer/` is in the project's `.gitignore`. If not, append it:
 
@@ -121,4 +144,4 @@ grep -q '\.indexer' .gitignore 2>/dev/null || echo '.indexer/' >> .gitignore
    - A PreToolUse hook has been installed to remind agents about indexer commands
    - Claude will now prefer `indexer` commands over grep/glob in this project
    - The index will be built automatically on first use (no manual `indexer init` needed)
-   - The index auto-updates when the git branch or commit changes, or after 5 minutes of staleness
+   - The index auto-updates on every query when the fingerprint changes (git HEAD, working tree status, or `.indexer/config.json` changes). Non-git repos use file mtime fingerprinting instead.

@@ -131,6 +131,11 @@ indexer stats
 | `indexer find <pattern>` | Find files or directories by name. Plain text does substring matching; glob characters (`*`, `?`, `[`) are used as-is. Use `--type f` for files only, `--type d` for directories only. |
 | `indexer tree [path]` | Show directory tree built from indexed files. Use `--depth N` to limit depth. |
 | `indexer stats` | Show index statistics: file count, symbol count, reference count, language breakdown. |
+| `indexer config show` | Print current config as JSON. |
+| `indexer config reset` | Reset config to seed defaults. |
+| `indexer config ignore <pattern>` | Add a pattern to the ignore list. |
+| `indexer config allow <pattern>` | Add a pattern to the allow list (overrides ignore). |
+| `indexer config remove <pattern>` | Remove a pattern from the ignore or allow list. |
 
 ## Supported Languages
 
@@ -351,18 +356,115 @@ uv run --extra bench python benchmark.py /path/to/project --json
 
 ## Configuration
 
-The index is stored in `.indexer/index.db` inside the project root. The `.indexer/` directory includes its own `.gitignore` (containing `*`) so it self-ignores even if the project doesn't explicitly exclude it.
+All indexer configuration lives in `.indexer/config.json`, created automatically on first use with sensible defaults. The file has two keys:
 
-The following paths are ignored by default:
+- **`ignore`** — patterns to exclude from the index (gitignore syntax)
+- **`allow`** — patterns that override `ignore`, re-including specific paths
 
-- Version control: `.git`
-- Dependencies: `node_modules`, `.venv`, `venv`
-- Build artifacts: `dist`, `build`, `*.pyc`, `*.so`, `*.o`, `*.class`
-- Binary/media files: `*.png`, `*.jpg`, `*.pdf`, `*.woff2`, `*.zip`
-- Lock files: `package-lock.json`, `yarn.lock`, `*.lock`
-- Caches: `__pycache__`, `.mypy_cache`, `.pytest_cache`, `.ruff_cache`
+```json
+{
+  "ignore": [
+    ".git", ".indexer", "__pycache__", "node_modules", "vendor",
+    ".venv", "venv", ".env", "dist", "build", ".tox",
+    ".mypy_cache", ".pytest_cache", ".ruff_cache",
+    "*.pyc", "*.pyo", "*.so", "*.dylib", "*.dll", "*.exe",
+    "*.o", "*.a", "*.class", "*.jar", "*.wasm",
+    "*.min.js", "*.min.css", "*.map",
+    "*.lock", "package-lock.json", "yarn.lock",
+    "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg",
+    "*.woff", "*.woff2", "*.ttf", "*.eot",
+    "*.pdf", "*.zip", "*.tar.gz", "*.tgz"
+  ],
+  "allow": []
+}
+```
 
-The `.gitignore` in your project root is also respected.
+The `.gitignore` in your project root is also respected (merged with `ignore` at scan time). `.git/` and `.indexer/` are always excluded regardless of config.
+
+The `.indexer/` directory includes its own `.gitignore` (containing `*`) so it self-ignores even if the project doesn't explicitly exclude it.
+
+### Ignoring additional paths
+
+Edit `.indexer/config.json` directly or use the CLI:
+
+```bash
+# Ignore a directory
+indexer config ignore "generated"
+
+# Ignore files by extension
+indexer config ignore "*.pb.go"
+
+# Re-index to apply
+indexer init .
+```
+
+### Allowing paths inside ignored directories
+
+The `allow` list re-includes specific paths that would otherwise be excluded by `ignore`. This is useful when you need to index a subdirectory inside an otherwise-ignored directory.
+
+For example, to index a specific library inside `vendor/` while keeping the rest of `vendor/` ignored:
+
+```bash
+# Allow one subdirectory inside vendor
+indexer config allow "vendor/my-special-lib/**"
+
+# Re-index to apply
+indexer init .
+```
+
+This works by descending into `vendor/` only far enough to reach `my-special-lib/`, without scanning the rest of `vendor/`. The equivalent manual edit to `.indexer/config.json`:
+
+```json
+{
+  "ignore": ["vendor", "..."],
+  "allow": ["vendor/my-special-lib/**"]
+}
+```
+
+More examples:
+
+```bash
+# Allow a scoped npm package inside node_modules
+indexer config allow "node_modules/@myorg/shared-types/**"
+
+# Allow only Go files inside vendor
+indexer config allow "vendor/**/*.go"
+
+# Allow a specific file
+indexer config allow "vendor/important.go"
+```
+
+### Removing patterns
+
+```bash
+# Stop ignoring a pattern
+indexer config remove "*.lock"
+
+# Stop allowing a pattern
+indexer config remove "vendor/my-special-lib/**"
+
+# Re-index to apply
+indexer init .
+```
+
+### Precedence rules
+
+1. A file is **included** by default
+2. If it matches any `ignore` pattern or `.gitignore` entry, it is **excluded**
+3. If it matches any `allow` pattern, it is **re-included** (allow overrides ignore)
+4. `.git/` and `.indexer/` are **always excluded**
+
+### Viewing and resetting config
+
+```bash
+# Print current config
+indexer config show
+
+# Reset to defaults
+indexer config reset
+```
+
+Config changes are detected automatically — the index fingerprint includes the config file, so query commands will trigger a re-index when the config changes.
 
 ## Architecture
 

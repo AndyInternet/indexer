@@ -21,14 +21,20 @@ def _git_fingerprint(root: Path) -> str | None:
     try:
         head = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            capture_output=True, text=True, cwd=root, timeout=5,
+            capture_output=True,
+            text=True,
+            cwd=root,
+            timeout=5,
         )
         if head.returncode != 0:
             return None
 
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            capture_output=True, text=True, cwd=root, timeout=10,
+            capture_output=True,
+            text=True,
+            cwd=root,
+            timeout=10,
         )
         if status.returncode != 0:
             return None
@@ -41,9 +47,9 @@ def _git_fingerprint(root: Path) -> str | None:
 
 def _fs_fingerprint(root: Path) -> str:
     """Compute a fingerprint from file mtimes for non-git repos."""
-    from indexer.config import Config
+    from indexer.config import load_or_create_config
 
-    config = Config(root=root)
+    config = load_or_create_config(root)
 
     # Walk the directory using the same ignore patterns as the scanner,
     # but only collect path + mtime — much cheaper than hashing contents.
@@ -60,8 +66,7 @@ def _fs_fingerprint(root: Path) -> str:
 
         # Prune ignored directories
         dirnames[:] = [
-            d for d in dirnames
-            if not spec.match_file(os.path.join(rel_dir, d, ""))
+            d for d in dirnames if not spec.match_file(os.path.join(rel_dir, d, ""))
         ]
 
         for fname in sorted(filenames):
@@ -77,12 +82,23 @@ def _fs_fingerprint(root: Path) -> str:
     return hashlib.sha256("\n".join(entries).encode()).hexdigest()
 
 
+def _config_fingerprint(root: Path) -> str:
+    """Hash the config file so config changes trigger re-index."""
+    from indexer.config import CONFIG_NAME, INDEXER_DIR
+
+    config_path = root / INDEXER_DIR / CONFIG_NAME
+    if config_path.exists():
+        return hashlib.sha256(config_path.read_bytes()).hexdigest()
+    return ""
+
+
 def compute_fingerprint(root: Path) -> str:
     """Compute a filesystem fingerprint. Uses git if available, falls back to mtimes."""
     git_fp = _git_fingerprint(root)
-    if git_fp is not None:
-        return git_fp
-    return _fs_fingerprint(root)
+    base_fp = git_fp if git_fp is not None else _fs_fingerprint(root)
+    # Include config hash so config changes trigger re-index
+    cfg_fp = _config_fingerprint(root)
+    return hashlib.sha256((base_fp + cfg_fp).encode()).hexdigest()
 
 
 def save_freshness(db: Database, root: Path) -> None:
@@ -124,7 +140,7 @@ def ensure_fresh(db: Database, root: Path, auto_update: bool = True) -> None:
 
 def _run_update(db: Database, root: Path) -> None:
     """Perform an incremental update inline."""
-    from indexer.config import Config
+    from indexer.config import load_or_create_config
     from indexer.db import FileRecord, RefRecord, SymbolRecord
     from indexer.parsing.extractors import extract_references, extract_symbols
     from indexer.parsing.languages import detect_language
@@ -133,8 +149,10 @@ def _run_update(db: Database, root: Path) -> None:
     from indexer.skeleton.extractor import extract_skeleton
     from indexer.tokens import count_tokens
 
-    config = Config(root=root)
-    files = list(scan_directory(config.root, config.ignore_patterns))
+    config = load_or_create_config(root)
+    files = list(
+        scan_directory(config.root, config.ignore_patterns, config.allow_patterns)
+    )
     existing_hashes = db.get_all_file_hashes()
     changes = detect_changes(existing_hashes, files)
 
@@ -160,9 +178,13 @@ def _run_update(db: Database, root: Path) -> None:
         for fi in to_index:
             lang = detect_language(fi.path)
             file_rec = FileRecord(
-                id=None, path=fi.path, content_hash=fi.content_hash,
-                last_modified=fi.last_modified, language=lang,
-                line_count=fi.line_count, byte_size=fi.byte_size,
+                id=None,
+                path=fi.path,
+                content_hash=fi.content_hash,
+                last_modified=fi.last_modified,
+                language=lang,
+                line_count=fi.line_count,
+                byte_size=fi.byte_size,
             )
             file_id = db.upsert_file(file_rec)
             db.delete_symbols_for_file(file_id)
@@ -180,19 +202,23 @@ def _run_update(db: Database, root: Path) -> None:
             if symbols:
                 sym_records = [
                     SymbolRecord(
-                        id=None, name=sym.name, kind=sym.kind, file_id=file_id,
-                        line_start=sym.line_start, line_end=sym.line_end,
-                        col_start=sym.col_start, col_end=sym.col_end,
-                        signature=sym.signature, parent_symbol_id=None,
+                        id=None,
+                        name=sym.name,
+                        kind=sym.kind,
+                        file_id=file_id,
+                        line_start=sym.line_start,
+                        line_end=sym.line_end,
+                        col_start=sym.col_start,
+                        col_end=sym.col_end,
+                        signature=sym.signature,
+                        parent_symbol_id=None,
                     )
                     for sym in symbols
                 ]
                 db.insert_symbols(sym_records)
 
                 parent_map = {
-                    sym.name: sym.parent_name
-                    for sym in symbols
-                    if sym.parent_name
+                    sym.name: sym.parent_name for sym in symbols if sym.parent_name
                 }
                 db.resolve_parent_symbols(file_id, parent_map)
 
@@ -228,8 +254,10 @@ def _run_update(db: Database, root: Path) -> None:
             if refs:
                 ref_records = [
                     RefRecord(
-                        id=None, from_file_id=frec.id,
-                        to_symbol_name=r.name, line=r.line,
+                        id=None,
+                        from_file_id=frec.id,
+                        to_symbol_name=r.name,
+                        line=r.line,
                         resolved_symbol_id=None,
                     )
                     for r in refs

@@ -30,7 +30,9 @@ pytest tests/test_specific.py::test_name  # Single test
 
 The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> render**.
 
-1. **Scanner** ([scanner.py](src/indexer/scanner.py)) walks the filesystem, respects `.gitignore` + built-in ignore patterns (via `pathspec`), and SHA-256 hashes each file for change detection.
+1. **Scanner** ([scanner.py](src/indexer/scanner.py)) walks the filesystem, respects `.gitignore` + configurable ignore/allow patterns (via `pathspec`), and SHA-256 hashes each file for change detection. Allow patterns override ignore patterns, enabling selective inclusion of paths inside otherwise-ignored directories.
+
+0. **Config** ([config.py](src/indexer/config.py)) manages `.indexer/config.json`, the sole source of truth for ignore and allow patterns. On first use, the config file is seeded with sensible defaults. The `Config` dataclass exposes `ignore_patterns` (always includes `.git` and `.indexer` as safety invariants) and `allow_patterns`. Config changes are detected by the freshness system — the fingerprint includes a hash of `config.json`, so query commands auto-trigger re-indexing when config changes.
 
 2. **Parser** ([parsing/](src/indexer/parsing/)) uses Tree-sitter to produce ASTs. Language detection is extension-based ([languages.py](src/indexer/parsing/languages.py)). Symbol and reference extraction ([extractors.py](src/indexer/parsing/extractors.py)) walks AST nodes to find definitions and cross-file identifier usage.
 
@@ -49,7 +51,8 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 - **Two-pass indexing**: References can only be resolved after all symbols from all files are in the database. The CLI orchestrates this as: index all files (pass 1), then resolve all references (pass 2).
 - **No scipy/numpy**: PageRank uses pure-Python power iteration to keep the dependency footprint small for global CLI installation.
 - **Self-ignoring `.indexer/`**: The `Database.connect()` method auto-creates a `.indexer/.gitignore` containing `*`, so the index directory is ignored even without project-level `.gitignore` configuration.
-- **Auto-freshness**: Every query command checks stored git branch/commit against current HEAD. If stale (branch switch, new commits), an incremental update runs automatically. If no index exists, it's built on first use. This is handled by [freshness.py](src/indexer/freshness.py). Non-git repos skip the check gracefully.
+- **Auto-freshness**: Every query command computes a fingerprint — `sha256(HEAD + git status --porcelain + config.json hash)` for git repos, or `sha256(sorted file mtimes + config.json hash)` for non-git repos — and compares it against the stored fingerprint. If they differ, an incremental update runs automatically. If no index exists, it's built on first use. This is handled by [freshness.py](src/indexer/freshness.py). There is no TTL — staleness is detected purely by fingerprint mismatch.
+- **Persistent config**: Ignore/allow patterns live in `.indexer/config.json`, not hardcoded. The `_SEED_IGNORE` list in `config.py` only seeds new config files — once the file exists, it is the sole source of truth. Allow patterns use the same gitignore glob syntax and override ignore patterns, with smart directory descent (only enters ignored directories far enough to reach allowed subtrees).
 
 ## Codebase Navigation — Indexer (MANDATORY)
 
@@ -92,7 +95,7 @@ The indexing pipeline flows: **scan -> parse -> extract -> store -> rank -> rend
 
 Agents do NOT inherit these instructions. You MUST include this directive in every agent prompt:
 
-> **Use `indexer` commands via Bash for ALL code navigation in this repo. Available commands: `indexer search <name>`, `indexer refs <symbol>`, `indexer callers <symbol>`, `indexer impl <symbol>`, `indexer skeleton [file]`, `indexer map --tokens 2048`, `indexer grep <pattern> [--ext .yaml] [-i]`, `indexer find <pattern>`, `indexer tree [path]`. Do NOT use Grep, Glob, find, or ls. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to edit.**
+> **Use `indexer` commands via Bash for ALL code navigation in this repo. Available commands: `indexer search <name>`, `indexer refs <symbol>`, `indexer callers <symbol>`, `indexer impl <symbol>`, `indexer skeleton [file]`, `indexer map --tokens 2048`, `indexer grep <pattern> [--ext .yaml] [-i]`, `indexer find <pattern>`, `indexer tree [path]`, `indexer config show|reset|ignore|allow|remove`. Do NOT use Grep, Glob, find, or ls. Use `indexer grep` for text search, `indexer find` for file search, `indexer tree` for directory listing. Only use Read when you know the exact file and lines to edit.**
 
 Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 
@@ -112,3 +115,8 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 | Find files by name | `indexer find <pattern> [--type f\|d]` |
 | Directory tree | `indexer tree [path] [--depth N]` |
 | Index stats | `indexer stats` |
+| View config | `indexer config show` |
+| Reset config to defaults | `indexer config reset` |
+| Add ignore pattern | `indexer config ignore <pattern>` |
+| Add allow pattern (overrides ignore) | `indexer config allow <pattern>` |
+| Remove ignore/allow pattern | `indexer config remove <pattern>` |

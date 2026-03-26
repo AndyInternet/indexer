@@ -10,7 +10,7 @@ from typing import Iterator
 
 import click
 
-from indexer.config import Config
+from indexer.config import Config, load_or_create_config, save_config
 from indexer.db import Database, FileRecord, RefRecord, SymbolRecord
 from indexer.freshness import ensure_fresh, save_freshness
 from indexer.parsing.extractors import extract_references, extract_symbols
@@ -23,7 +23,7 @@ from indexer.tokens import count_tokens
 
 def _get_config(path: str | None = None) -> Config:
     root = Path(path).resolve() if path else Path.cwd()
-    return Config(root=root)
+    return load_or_create_config(root)
 
 
 def _get_db(config: Config, fresh: bool = False) -> Database:
@@ -41,16 +41,22 @@ def _get_db(config: Config, fresh: bool = False) -> Database:
 def _auto_init(db: Database, config: Config) -> None:
     """Build the index from scratch (called automatically on first query)."""
     db.init_schema()
-    files = list(scan_directory(config.root, config.ignore_patterns))
+    files = list(
+        scan_directory(config.root, config.ignore_patterns, config.allow_patterns)
+    )
     parseable = [f for f in files if detect_language(f.path) is not None]
     non_parseable = [f for f in files if detect_language(f.path) is None]
 
     for fi in non_parseable:
         db.upsert_file(
             FileRecord(
-                id=None, path=fi.path, content_hash=fi.content_hash,
-                last_modified=fi.last_modified, language=None,
-                line_count=fi.line_count, byte_size=fi.byte_size,
+                id=None,
+                path=fi.path,
+                content_hash=fi.content_hash,
+                last_modified=fi.last_modified,
+                language=None,
+                line_count=fi.line_count,
+                byte_size=fi.byte_size,
             )
         )
     db.connect().commit()
@@ -124,9 +130,7 @@ def _index_files(
 
             # Resolve parent-child relationships (e.g., method → class)
             parent_map = {
-                sym.name: sym.parent_name
-                for sym in symbols
-                if sym.parent_name
+                sym.name: sym.parent_name for sym in symbols if sym.parent_name
             }
             db.resolve_parent_symbols(file_id, parent_map)
 
@@ -201,7 +205,9 @@ def init(path: str):
     db.init_schema()
 
     click.echo(f"Scanning {config.root}...")
-    files = list(scan_directory(config.root, config.ignore_patterns))
+    files = list(
+        scan_directory(config.root, config.ignore_patterns, config.allow_patterns)
+    )
     click.echo(f"Found {len(files)} files.")
 
     if not files:
@@ -259,7 +265,9 @@ def update(path: str):
     db = _get_db(config)
 
     click.echo("Scanning for changes...")
-    files = list(scan_directory(config.root, config.ignore_patterns))
+    files = list(
+        scan_directory(config.root, config.ignore_patterns, config.allow_patterns)
+    )
     existing_hashes = db.get_all_file_hashes()
     changes = detect_changes(existing_hashes, files)
 
@@ -620,8 +628,12 @@ def tree(subpath: str, depth: int, path: str):
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
 @click.option(
-    "--type", "-t", "file_type", default=None, hidden=True,
-    help="Accepted for compatibility (ignored; grep always searches files)"
+    "--type",
+    "-t",
+    "file_type",
+    default=None,
+    hidden=True,
+    help="Accepted for compatibility (ignored; grep always searches files)",
 )
 def grep_cmd(
     pattern: str,
@@ -723,6 +735,98 @@ def grep_cmd(
         click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
 
     db.close()
+
+
+@main.group("config")
+def config_group():
+    """View and manage indexer configuration."""
+    pass
+
+
+@config_group.command("show")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def config_show(path: str):
+    """Print current config as JSON."""
+    import json
+
+    config = _get_config(path)
+    data = {"ignore": config.ignore, "allow": config.allow}
+    click.echo(json.dumps(data, indent=2))
+
+
+@config_group.command("reset")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def config_reset(path: str):
+    """Reset config to seed defaults."""
+    from indexer.config import _SEED_IGNORE
+
+    config = _get_config(path)
+    config.ignore = list(_SEED_IGNORE)
+    config.allow = []
+    save_config(config)
+    click.echo(f"Config reset to defaults: {config.config_path}")
+
+
+@config_group.command("ignore")
+@click.argument("pattern")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def config_ignore(pattern: str, path: str):
+    """Add a pattern to the ignore list."""
+    config = _get_config(path)
+    if pattern in config.ignore:
+        click.echo(f"Pattern already in ignore list: {pattern}")
+        return
+    config.ignore.append(pattern)
+    save_config(config)
+    click.echo(f"Added to ignore: {pattern}")
+    click.echo("Run 'indexer init .' to re-index with updated config.")
+
+
+@config_group.command("allow")
+@click.argument("pattern")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def config_allow(pattern: str, path: str):
+    """Add a pattern to the allow list (overrides ignore)."""
+    config = _get_config(path)
+    if pattern in config.allow:
+        click.echo(f"Pattern already in allow list: {pattern}")
+        return
+    config.allow.append(pattern)
+    save_config(config)
+    click.echo(f"Added to allow: {pattern}")
+    click.echo("Run 'indexer init .' to re-index with updated config.")
+
+
+@config_group.command("remove")
+@click.argument("pattern")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def config_remove(pattern: str, path: str):
+    """Remove a pattern from the ignore or allow list."""
+    config = _get_config(path)
+    removed = False
+    if pattern in config.ignore:
+        config.ignore.remove(pattern)
+        click.echo(f"Removed from ignore: {pattern}")
+        removed = True
+    if pattern in config.allow:
+        config.allow.remove(pattern)
+        click.echo(f"Removed from allow: {pattern}")
+        removed = True
+    if removed:
+        save_config(config)
+        click.echo("Run 'indexer init .' to re-index with updated config.")
+    else:
+        click.echo(f"Pattern not found in ignore or allow: {pattern}")
 
 
 if __name__ == "__main__":
