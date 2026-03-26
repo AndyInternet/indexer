@@ -1,5 +1,5 @@
 ---
-name: explore-with-indexer
+name: indexer-explore
 description: Spawn an exploration agent pre-loaded with indexer instructions for code navigation. Use when investigating code structure, tracing dependencies, or understanding unfamiliar parts of the codebase.
 disable-model-invocation: true
 argument-hint: "<question about the codebase>"

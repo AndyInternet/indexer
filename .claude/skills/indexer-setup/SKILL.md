@@ -1,5 +1,5 @@
 ---
-name: setup-indexer
+name: indexer-setup
 description: Configure this project so Claude prefers the indexer for codebase navigation over grep and glob. Adds usage instructions to CLAUDE.md, installs a PreToolUse hook, and ensures the index directory is gitignored.
 disable-model-invocation: true
 ---

@@ -63,7 +63,7 @@ if command -v jq >/dev/null 2>&1; then
   echo "  Done: $GLOBAL_SETTINGS"
 else
   echo "Warning: jq not found — skipping global permission setup."
-  echo "  Manually add indexer permissions to $GLOBAL_SETTINGS or run /setup-indexer in each project."
+  echo "  Manually add indexer permissions to $GLOBAL_SETTINGS or run /indexer-setup in each project."
 fi
 
 echo "Done."

@@ -252,16 +252,16 @@ Indexer ships with three [Claude Code skills](https://code.claude.com/docs/en/sk
 ./install.sh
 
 # Or copy skills manually
-cp -r /path/to/indexer/.claude/skills/index-codebase ~/.claude/skills/
-cp -r /path/to/indexer/.claude/skills/setup-indexer ~/.claude/skills/
-cp -r /path/to/indexer/.claude/skills/explore-with-indexer ~/.claude/skills/
+cp -r /path/to/indexer/.claude/skills/indexer-index ~/.claude/skills/
+cp -r /path/to/indexer/.claude/skills/indexer-setup ~/.claude/skills/
+cp -r /path/to/indexer/.claude/skills/indexer-explore ~/.claude/skills/
 ```
 
-### `/index-codebase`
+### `/indexer-index`
 
 Explicitly builds or incrementally updates the index. Useful for forcing a rebuild — the index auto-updates on every query, so this is rarely needed.
 
-### `/setup-indexer`
+### `/indexer-setup`
 
 Configures a project for indexer-first navigation:
 - Appends comprehensive indexer instructions to `CLAUDE.md` (default workflow, exceptions table, anti-patterns, agent prompt block)
@@ -270,20 +270,20 @@ Configures a project for indexer-first navigation:
 
 Run this once per project. The index builds and stays fresh automatically — no manual indexing step needed.
 
-### `/explore-with-indexer`
+### `/indexer-explore`
 
 Spawns an exploration agent pre-loaded with indexer instructions. Use it to investigate unfamiliar code:
 
 ```
-/explore-with-indexer How does the PageRank computation work?
-/explore-with-indexer Trace all callers of Database.connect
+/indexer-explore How does the PageRank computation work?
+/indexer-explore Trace all callers of Database.connect
 ```
 
 The agent starts by running `indexer map` to orient itself, then uses indexer commands exclusively for navigation.
 
 ### PreToolUse hook
 
-The hook (installed by `/setup-indexer`) watches for Grep and Glob tool calls that look like symbol navigation:
+The hook (installed by `/indexer-setup`) watches for Grep and Glob tool calls that look like symbol navigation:
 
 - **Grep with symbol-like patterns** (CamelCase, snake_case, PascalCase, ALL_CAPS) — injects a reminder to use `indexer search`/`refs`/`callers`
 - **Glob with broad code patterns** (`**/*.py`, `**/*`) — reminds to use `indexer map`/`find`/`tree`
@@ -294,10 +294,10 @@ The hook never blocks — it only adds context to nudge agents toward the index.
 
 ```
 # In any project, one-time setup:
-/setup-indexer
+/indexer-setup
 ```
 
-That's it. The index builds automatically on first query and stays fresh via fingerprinting. No need to run `/index-codebase` at the start of each session — Claude will use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob, and the index self-updates when it detects changes.
+That's it. The index builds automatically on first query and stays fresh via fingerprinting. No need to run `/indexer-index` at the start of each session — Claude will use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob, and the index self-updates when it detects changes.
 
 ## Benchmarking
 

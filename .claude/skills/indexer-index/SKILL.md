@@ -1,5 +1,5 @@
 ---
-name: index-codebase
+name: indexer-index
 description: Build or update the structural code index for the current project using the indexer CLI. Use when the user explicitly asks to index or re-index the codebase, or to force a full rebuild.
 disable-model-invocation: true
 ---
@@ -38,4 +38,4 @@ If the `indexer` command is not found, tell the user to install it globally:
 uv tool install indexer
 ```
 
-Then suggest they also run `/setup-indexer` to configure Claude to prefer the index for codebase navigation.
+Then suggest they also run `/indexer-setup` to configure Claude to prefer the index for codebase navigation.
