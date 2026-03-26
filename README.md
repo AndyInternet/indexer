@@ -47,7 +47,7 @@ Indexer generates a local SQLite index of your codebase containing:
 ./install.sh
 ```
 
-Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades both the CLI and commands in place.
+Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades everything in place.
 
 To uninstall:
 
@@ -243,56 +243,48 @@ Files are tracked by SHA-256 content hash, so only changed files are re-parsed. 
 
 ## Claude Code Integration
 
-Indexer ships with three [Claude Code commands](https://docs.anthropic.com/en/docs/claude-code/slash-commands) and a PreToolUse hook that can be installed globally.
+### Global install
 
-### Install the commands
+`install.sh` sets up everything globally — CLI tool, Claude commands, permissions, and a PreToolUse hook:
 
 ```bash
-# install.sh handles CLI tool, commands, and permissions in one step
 ./install.sh
 ```
 
-### `/indexer-index`
+This gives you `indexer` commands in every project. The index auto-builds on first use and auto-updates on subsequent queries. No per-project setup is required for basic usage.
 
-Explicitly builds or incrementally updates the index. Useful for forcing a rebuild — the index auto-updates on every query, so this is rarely needed.
+### Per-project setup (optional)
 
-### `/indexer-setup`
+For projects where you want Claude to systematically prefer indexer over grep/glob, run the `/indexer-setup` command inside the project. This:
 
-Configures a project for indexer-first navigation:
 - Appends comprehensive indexer instructions to `CLAUDE.md` (default workflow, exceptions table, anti-patterns, agent prompt block)
-- Installs a PreToolUse hook that reminds agents to use indexer when they reach for `grep`/`glob` with symbol-like patterns
-- Ensures `.indexer/` is in `.gitignore`
+- Installs a project-level PreToolUse hook (supplements the global hook)
 
-Run this once per project. The index builds and stays fresh automatically — no manual indexing step needed.
+Without this, Claude will still get nudges from the global hook when it reaches for Grep/Glob, but won't have the full CLAUDE.md instructions guiding its workflow.
 
-### `/indexer-explore`
+### Commands
 
-Spawns an exploration agent pre-loaded with indexer instructions. Use it to investigate unfamiliar code:
+| Command | Description |
+|---|---|
+| `/indexer-setup` | One-time per-project setup — adds CLAUDE.md instructions and project-level hook |
+| `/indexer-index` | Explicitly builds or updates the index (rarely needed — queries auto-update) |
+| `/indexer-explore` | Spawns an exploration agent pre-loaded with indexer instructions |
+
+`/indexer-explore` is useful for investigating unfamiliar code:
 
 ```
 /indexer-explore How does the PageRank computation work?
 /indexer-explore Trace all callers of Database.connect
 ```
 
-The agent starts by running `indexer map` to orient itself, then uses indexer commands exclusively for navigation.
-
 ### PreToolUse hook
 
-The hook (installed by `/indexer-setup`) watches for Grep and Glob tool calls that look like symbol navigation:
+The hook (installed globally by `install.sh`) watches for Grep and Glob tool calls that look like symbol navigation:
 
 - **Grep with symbol-like patterns** (CamelCase, snake_case, PascalCase, ALL_CAPS) — injects a reminder to use `indexer search`/`refs`/`callers`
 - **Glob with broad code patterns** (`**/*.py`, `**/*`) — reminds to use `indexer map`/`find`/`tree`
 
 The hook never blocks — it only adds context to nudge agents toward the index.
-
-### Recommended workflow
-
-```
-# In any project, one-time setup:
-/indexer-setup
-```
-
-That's it. The index builds automatically on first query and stays fresh via fingerprinting. No need to run `/indexer-index` at the start of each session — Claude will use `indexer search`, `indexer map`, `indexer skeleton`, `indexer grep`, etc. instead of grep/glob, and the index self-updates when it detects changes.
 
 ## Benchmarking
 
