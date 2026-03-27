@@ -99,6 +99,18 @@ class Config:
         return list(self.allow)
 
 
+def find_project_root(start: Path) -> Path:
+    """Walk up from *start* looking for ``.git/``. Falls back to *start* if not found."""
+    current = start.resolve()
+    while True:
+        if (current / ".git").exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            return start.resolve()
+        current = parent
+
+
 def load_or_create_config(root: Path) -> Config:
     """Load config from .indexer/config.json, or create it with seed defaults."""
     indexer_dir = root / INDEXER_DIR

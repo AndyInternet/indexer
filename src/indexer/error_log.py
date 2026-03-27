@@ -10,7 +10,7 @@ from pathlib import Path
 
 import click
 
-from indexer.config import ERROR_LOG_NAME, INDEXER_DIR
+from indexer.config import ERROR_LOG_NAME, INDEXER_DIR, find_project_root
 
 
 def _find_path_in_args(argv: list[str]) -> str | None:
@@ -47,6 +47,7 @@ def _resolve_indexer_dir(ctx: click.Context | None) -> Path:
         path_str = _find_path_in_args(sys.argv[1:])
 
     root = Path(path_str).resolve() if path_str else Path.cwd()
+    root = find_project_root(root)
     return root / INDEXER_DIR
 
 

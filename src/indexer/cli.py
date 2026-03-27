@@ -10,7 +10,7 @@ from typing import Iterator
 
 import click
 
-from indexer.config import Config, load_or_create_config, save_config
+from indexer.config import Config, find_project_root, load_or_create_config, save_config
 from indexer.error_log import ErrorLoggingGroup
 from indexer.db import Database, FileRecord, RefRecord, SymbolRecord
 from indexer.freshness import ensure_fresh, save_freshness
@@ -22,8 +22,10 @@ from indexer.skeleton.extractor import extract_skeleton
 from indexer.tokens import count_tokens
 
 
-def _get_config(path: str | None = None) -> Config:
+def _get_config(path: str | None = None, detect_root: bool = True) -> Config:
     root = Path(path).resolve() if path else Path.cwd()
+    if detect_root:
+        root = find_project_root(root)
     return load_or_create_config(root)
 
 
@@ -201,7 +203,7 @@ def main():
 @click.argument("path", default=".", type=click.Path(exists=True))
 def init(path: str):
     """Index a codebase and store in .indexer/index.db."""
-    config = _get_config(path)
+    config = _get_config(path, detect_root=False)
     db = _get_db(config)
     db.init_schema()
 
@@ -256,7 +258,7 @@ def init(path: str):
 @click.argument("path", default=".", type=click.Path(exists=True))
 def update(path: str):
     """Incrementally update the index for changed files."""
-    config = _get_config(path)
+    config = _get_config(path, detect_root=False)
     if not config.db_path.exists():
         db = _get_db(config)
         click.echo("No index found, building from scratch...")

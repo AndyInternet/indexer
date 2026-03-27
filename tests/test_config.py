@@ -8,6 +8,7 @@ from pathlib import Path
 from indexer.config import (
     _SEED_IGNORE,
     Config,
+    find_project_root,
     load_or_create_config,
     save_config,
 )
@@ -71,3 +72,24 @@ def test_allow_patterns_returns_copy():
     patterns = config.allow_patterns
     patterns.append("y/**")
     assert "y/**" not in config.allow
+
+
+def test_find_project_root_with_git(tmp_path: Path):
+    """Finds .git directory when walking up from a subdirectory."""
+    (tmp_path / ".git").mkdir()
+    subdir = tmp_path / "src" / "pkg"
+    subdir.mkdir(parents=True)
+    assert find_project_root(subdir) == tmp_path
+
+
+def test_find_project_root_no_markers(tmp_path: Path):
+    """Falls back to start directory when no .git found."""
+    subdir = tmp_path / "some" / "deep" / "path"
+    subdir.mkdir(parents=True)
+    assert find_project_root(subdir) == subdir
+
+
+def test_find_project_root_at_root(tmp_path: Path):
+    """Returns start when .git is at start itself."""
+    (tmp_path / ".git").mkdir()
+    assert find_project_root(tmp_path) == tmp_path
