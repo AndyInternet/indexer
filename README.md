@@ -4,40 +4,6 @@ AI-optimized codebase index generator. Uses Tree-sitter AST parsing, code skelet
 
 Built from research on [advanced codebase indexing strategies for AI agents](research.md).
 
-## Why This Instead of grep/find/ls
-
-Standard bash tools are designed for humans. AI agents use them anyway and pay for it — in tokens, in missed context, and in wasted turns. Here's what indexer does differently:
-
-| What agents do | The problem | What indexer does instead |
-|---|---|---|
-| `grep -r "MyClass"` to find a definition | Returns every mention — imports, comments, string literals, tests — and the agent has to read them all to find the actual definition | `indexer search MyClass` returns only the definition with file, line, signature |
-| `grep -r "MyClass"` to find callers | Same wall of noise. Agent can't distinguish callers from definitions from type annotations | `indexer callers MyClass` returns only call sites, grouped by file |
-| `cat main.py` to understand a file | Dumps 500 lines of implementation into context. Agent burns tokens reading function bodies it doesn't need | `indexer skeleton main.py` shows imports + signatures only (~10% of tokens) |
-| `find . -name "*.py"` to explore the repo | Flat alphabetical list with no signal about what matters | `indexer map --tokens 2048` shows the most architecturally important files first, ranked by PageRank |
-| `grep -r "config" *.yaml` to search configs | Results in filesystem order — test fixtures before core config | `indexer grep "config" --ext .yaml` ranks results by file importance |
-| `find . -type f` / `ls -R` to see structure | Raw directory listing, no filtering for what the index knows about | `indexer tree --depth 2` shows the indexed project structure |
-
-The core advantages:
-
-- **Smarter results** — PageRank ranking surfaces the most important files first in `map`, `grep`, and `find`. An agent searching for `"database"` sees the core DB module before test mocks.
-- **Structural understanding** — `search`, `refs`, and `callers` use the AST-parsed symbol index, not text matching. They know the difference between a function definition, a function call, and a comment mentioning the function name.
-- **Token efficiency** — `skeleton` compresses files to ~10% of their token cost. `map` fits a ranked repo overview into a configurable token budget. Agents get more context per token spent.
-- **Consistency** — All commands respect the same ignore patterns (`.gitignore` + built-in defaults). No accidental searches through `node_modules` or `.venv`.
-- **Incremental** — SHA-256 content hashing means `indexer update` only re-parses changed files. The index stays fresh without full re-scans.
-- **Self-healing** — The index auto-builds on first query and auto-updates when it detects changes. In git repos, a fingerprint of `HEAD + git status` catches branch switches, new commits, and uncommitted edits. In non-git repos, file mtimes are fingerprinted instead. No manual `init` or `update` needed.
-
-## What It Indexes
-
-Indexer generates a local SQLite index of your codebase containing:
-
-- **Code skeletons** — imports + function signatures + class structure, no bodies (~10% of original tokens)
-- **PageRank repo map** — dependency-graph-ranked overview of the most important files, fitted to a configurable token budget
-- **Symbol index** — searchable database of all definitions and cross-file references
-- **Full-text search** — PageRank-ranked grep across all indexed files, so the most important results come first
-- **File discovery** — find files by pattern and view directory trees from the index, no filesystem walk needed
-- **Incremental updates** — SHA-256 hashing means only changed files are re-parsed
-- **Auto-freshness** — index auto-builds on first query and auto-updates when git state or file mtimes change
-
 ## Quickstart
 
 ### Install the CLI
@@ -108,6 +74,79 @@ indexer stats
 
 > **Note:** You don't need to run `indexer update` manually — query commands auto-detect changes and update the index before returning results.
 
+## Claude Code Integration
+
+The plugin gives Claude Code auto-allowed permissions and a PreToolUse hook that enforces `indexer` usage — all configured by a single command.
+
+### Install the plugin
+
+```bash
+cd /path/to/your/project
+indexer plugin install
+```
+
+This writes `.claude/settings.json` in the project with:
+
+- Auto-allowed permissions for all `indexer` commands
+- PreToolUse hook that intercepts Grep/Glob/Bash/LSP and redirects to `indexer`
+
+Start a new Claude Code session to activate.
+
+### Manage the plugin
+
+```bash
+indexer plugin status      # Check if installed
+indexer plugin uninstall   # Remove from project
+```
+
+### PreToolUse hook
+
+The hook intercepts Grep, Glob, and Bash tool calls and redirects them to the appropriate `indexer` command:
+
+- **Grep with symbol-like patterns** (camelCase, snake_case, PascalCase, SCREAMING_SNAKE, $-prefixed) → `indexer search`/`refs`/`callers`
+- **Grep with any other pattern** → `indexer grep` (PageRank-ranked results)
+- **Glob** (all patterns) → `indexer find`/`map`/`tree`
+- **Bash `find`** → `indexer find`
+- **Bash `grep`/`rg`** → `indexer grep`
+- **Bash `ls -R`** → `indexer tree`
+- **Bash `cat` on source files** → `indexer skeleton`/`impl`
+
+The hook denies the tool call and provides the correct `indexer` alternative in the denial reason. Non-code commands (`git`, `npm`, `pytest`, `indexer` itself, etc.) pass through unblocked.
+
+## Why This Instead of grep/find/ls
+
+Standard bash tools are designed for humans. AI agents use them anyway and pay for it — in tokens, in missed context, and in wasted turns. Here's what indexer does differently:
+
+| What agents do | The problem | What indexer does instead |
+|---|---|---|
+| `grep -r "MyClass"` to find a definition | Returns every mention — imports, comments, string literals, tests — and the agent has to read them all to find the actual definition | `indexer search MyClass` returns only the definition with file, line, signature |
+| `grep -r "MyClass"` to find callers | Same wall of noise. Agent can't distinguish callers from definitions from type annotations | `indexer callers MyClass` returns only call sites, grouped by file |
+| `cat main.py` to understand a file | Dumps 500 lines of implementation into context. Agent burns tokens reading function bodies it doesn't need | `indexer skeleton main.py` shows imports + signatures only (~10% of tokens) |
+| `find . -name "*.py"` to explore the repo | Flat alphabetical list with no signal about what matters | `indexer map --tokens 2048` shows the most architecturally important files first, ranked by PageRank |
+| `grep -r "config" *.yaml` to search configs | Results in filesystem order — test fixtures before core config | `indexer grep "config" --ext .yaml` ranks results by file importance |
+| `find . -type f` / `ls -R` to see structure | Raw directory listing, no filtering for what the index knows about | `indexer tree --depth 2` shows the indexed project structure |
+
+The core advantages:
+
+- **Smarter results** — PageRank ranking surfaces the most important files first in `map`, `grep`, and `find`. An agent searching for `"database"` sees the core DB module before test mocks.
+- **Structural understanding** — `search`, `refs`, and `callers` use the AST-parsed symbol index, not text matching. They know the difference between a function definition, a function call, and a comment mentioning the function name.
+- **Token efficiency** — `skeleton` compresses files to ~10% of their token cost. `map` fits a ranked repo overview into a configurable token budget. Agents get more context per token spent.
+- **Consistency** — All commands respect the same ignore patterns (`.gitignore` + built-in defaults). No accidental searches through `node_modules` or `.venv`.
+- **Incremental** — SHA-256 content hashing means `indexer update` only re-parses changed files. The index stays fresh without full re-scans.
+- **Self-healing** — The index auto-builds on first query and auto-updates when it detects changes. In git repos, a fingerprint of `HEAD + git status` catches branch switches, new commits, and uncommitted edits. In non-git repos, file mtimes are fingerprinted instead. No manual `init` or `update` needed.
+
+## What It Indexes
+
+Indexer generates a local SQLite index of your codebase containing:
+
+- **Code skeletons** — imports + function signatures + class structure, no bodies (~10% of original tokens)
+- **PageRank repo map** — dependency-graph-ranked overview of the most important files, fitted to a configurable token budget
+- **Symbol index** — searchable database of all definitions and cross-file references
+- **Full-text search** — PageRank-ranked grep across all indexed files, so the most important results come first
+- **File discovery** — find files by pattern and view directory trees from the index, no filesystem walk needed
+- **Incremental updates** — SHA-256 hashing means only changed files are re-parsed
+- **Auto-freshness** — index auto-builds on first query and auto-updates when git state or file mtimes change
+
 ## Commands Reference
 
 | Command | Description |
@@ -129,6 +168,9 @@ indexer stats
 | `indexer config ignore <pattern>` | Add a pattern to the ignore list. |
 | `indexer config allow <pattern>` | Add a pattern to the allow list (overrides ignore). |
 | `indexer config remove <pattern>` | Remove a pattern from the ignore or allow list. |
+| `indexer plugin install` | Install the Claude Code plugin into the current project. |
+| `indexer plugin uninstall` | Remove the Claude Code plugin from the current project. |
+| `indexer plugin status` | Check if the Claude Code plugin is installed. |
 
 ## Supported Languages
 
@@ -233,73 +275,6 @@ Unlike traditional `grep` which returns results in file-system order, `indexer g
 Every query command checks a stored fingerprint before running. In git repos, the fingerprint is `sha256(HEAD commit + git status --porcelain)`, which captures branch switches, new commits, staged changes, unstaged edits, and untracked files — all in one ~10ms check. In non-git repos, file mtimes are fingerprinted instead. If the fingerprint changed, an incremental update runs automatically before the query returns results.
 
 Files are tracked by SHA-256 content hash, so only changed files are re-parsed. The SQLite database uses `ON DELETE CASCADE` so re-indexing a file automatically cleans up its stale symbols, references, and skeleton.
-
-## Claude Code Integration
-
-The plugin gives Claude Code skills, auto-allowed permissions, and a PreToolUse hook — all in one package. It requires the `indexer` CLI to be installed first (see [Quickstart](#quickstart)).
-
-### Install the plugin
-
-```bash
-cd /path/to/your/project
-indexer plugin install
-```
-
-This writes `.claude/settings.json` in the project with:
-
-- Plugin reference (absolute path to the plugin directory)
-- Auto-allowed permissions for all `indexer` commands
-- PreToolUse hook that intercepts Grep/Glob/Bash/LSP and redirects to `indexer`
-
-Start a new Claude Code session to activate. You now have:
-
-- `/indexer:setup` — one-time per-project setup (adds CLAUDE.md instructions)
-- `/indexer:index` — explicitly build or update the index
-- `/indexer:explore` — spawn an exploration agent pre-loaded with indexer commands
-
-### Manage the plugin
-
-```bash
-indexer plugin status      # Check if installed
-indexer plugin uninstall   # Remove from project
-```
-
-### Per-project setup
-
-The hook intercepts tool calls and redirects to `indexer`. For full integration — where Claude systematically prefers indexer for all code navigation — run the setup skill inside the project:
-
-```
-/indexer:setup
-```
-
-This appends comprehensive instructions to `CLAUDE.md`: default workflow, exceptions table, anti-patterns, and an agent prompt block.
-
-### Skills reference
-
-| Skill | Description |
-|---|---|
-| `/indexer:setup` | Adds CLAUDE.md instructions so Claude prefers indexer for code navigation |
-| `/indexer:index` | Explicitly builds or updates the index (rarely needed — queries auto-update) |
-| `/indexer:explore <question>` | Spawns an exploration agent pre-loaded with indexer commands |
-
-```
-/indexer:explore How does the PageRank computation work?
-/indexer:explore Trace all callers of Database.connect
-```
-
-### PreToolUse hook
-
-The hook intercepts Grep, Glob, and Bash tool calls and redirects them to the appropriate `indexer` command:
-
-- **Grep with symbol-like patterns** (camelCase, snake_case, PascalCase, SCREAMING_SNAKE, $-prefixed) → `indexer search`/`refs`/`callers`
-- **Grep with any other pattern** → `indexer grep` (PageRank-ranked results)
-- **Glob** (all patterns) → `indexer find`/`map`/`tree`
-- **Bash `find`** → `indexer find`
-- **Bash `grep`/`rg`** → `indexer grep`
-- **Bash `ls -R`** → `indexer tree`
-- **Bash `cat` on source files** → `indexer skeleton`/`impl`
-
-The hook denies the tool call and provides the correct `indexer` alternative in the denial reason. Non-code commands (`git`, `npm`, `pytest`, `indexer` itself, etc.) pass through unblocked.
 
 ## Benchmarking
 

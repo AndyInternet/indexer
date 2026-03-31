@@ -1,8 +1,0 @@
-{
-  "name": "indexer",
-  "description": "AI-optimized codebase navigation using Tree-sitter AST parsing, code skeletons, and PageRank-ranked repo maps. Replaces grep/glob/find with structural code intelligence.",
-  "version": "1.0.0",
-  "author": {
-    "name": "Andy Lawrence"
-  }
-}

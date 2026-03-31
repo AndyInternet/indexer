@@ -1,7 +1,4 @@
 {
-  "plugins": [
-    "/Users/alawrence/Projects/indexer/plugin"
-  ],
   "permissions": {
     "allow": [
       "Bash(indexer map:*)",

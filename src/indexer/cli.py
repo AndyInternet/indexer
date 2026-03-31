@@ -920,13 +920,6 @@ def plugin_install(path: str):
         except (json.JSONDecodeError, OSError):
             pass
 
-    # Merge plugin reference
-    plugins = existing.get("plugins", [])
-    plugin_str = str(plugin_path)
-    if plugin_str not in plugins:
-        plugins.append(plugin_str)
-    existing["plugins"] = plugins
-
     # Merge permissions
     indexer_perms = [
         "Bash(indexer map:*)",
@@ -967,10 +960,9 @@ def plugin_install(path: str):
 
     settings_path.write_text(json.dumps(existing, indent=2) + "\n")
 
-    click.echo(f"Installed Claude Code plugin into {settings_path}")
-    click.echo(f"  Plugin: {plugin_path}")
-    click.echo(f"  Hook:   {hook_script}")
-    click.echo(f"  Permissions: {len(indexer_perms)} indexer commands auto-allowed")
+    click.echo(f"Installed indexer plugin into {settings_path}")
+    click.echo(f"  Hook: {hook_script}")
+    click.echo(f"  Permissions: {len(indexer_perms)} commands auto-allowed")
     click.echo("\nStart a new Claude Code session to activate.")
 
 
@@ -995,18 +987,7 @@ def plugin_uninstall(path: str):
         click.echo("Could not parse .claude/settings.json")
         sys.exit(1)
 
-    plugin_str = str(_plugin_dir())
     changed = False
-
-    # Remove plugin reference
-    plugins = existing.get("plugins", [])
-    if plugin_str in plugins:
-        plugins.remove(plugin_str)
-        changed = True
-    if not plugins:
-        existing.pop("plugins", None)
-    else:
-        existing["plugins"] = plugins
 
     # Remove indexer permissions
     allow = existing.get("permissions", {}).get("allow", [])
@@ -1067,8 +1048,6 @@ def plugin_status(path: str):
         click.echo("Could not parse .claude/settings.json")
         return
 
-    plugin_str = str(_plugin_dir())
-    has_plugin = plugin_str in existing.get("plugins", [])
     has_hooks = any(
         "pretool-indexer-hint" in hook.get("command", "")
         for entry in existing.get("hooks", {}).get("PreToolUse", [])
@@ -1077,16 +1056,14 @@ def plugin_status(path: str):
     allow = existing.get("permissions", {}).get("allow", [])
     has_perms = any(p.startswith("Bash(indexer ") for p in allow)
 
-    if has_plugin and has_hooks and has_perms:
+    if has_hooks and has_perms:
         click.echo("Installed ✓")
-        click.echo(f"  Plugin: {plugin_str}")
-        click.echo(f"  Hooks:  active")
-        click.echo(f"  Perms:  {sum(1 for p in allow if p.startswith('Bash(indexer '))} commands auto-allowed")
+        click.echo(f"  Hooks: active")
+        click.echo(f"  Perms: {sum(1 for p in allow if p.startswith('Bash(indexer '))} commands auto-allowed")
     else:
         click.echo("Partially installed:")
-        click.echo(f"  Plugin: {'✓' if has_plugin else '✗'}")
-        click.echo(f"  Hooks:  {'✓' if has_hooks else '✗'}")
-        click.echo(f"  Perms:  {'✓' if has_perms else '✗'}")
+        click.echo(f"  Hooks: {'✓' if has_hooks else '✗'}")
+        click.echo(f"  Perms: {'✓' if has_perms else '✗'}")
         click.echo("\nRun 'indexer plugin install' to fix.")
 
 
