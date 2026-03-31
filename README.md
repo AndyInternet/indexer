@@ -12,7 +12,15 @@ Built from research on [advanced codebase indexing strategies for AI agents](res
 uv tool install /path/to/indexer
 ```
 
-Once installed, `indexer` is available as a command anywhere on your system. To upgrade, run the same command with `--force`.
+Once installed, `indexer` is available as a command anywhere on your system.
+
+### Upgrade to a new version
+
+```bash
+uv tool install --force --reinstall /path/to/indexer
+```
+
+Then re-run `indexer plugin install` in each project that uses the Claude Code plugin — the hook script path changes with each install, so existing projects need their `.claude/settings.json` updated.
 
 ### Index a codebase
 

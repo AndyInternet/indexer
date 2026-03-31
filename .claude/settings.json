@@ -24,7 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash /Users/alawrence/Projects/indexer/plugin/hooks/pretool-indexer-hint.sh"
+            "command": "bash /Users/alawrence/.local/share/uv/tools/indexer/lib/python3.14/site-packages/indexer/plugin/hooks/pretool-indexer-hint.sh"
           }
         ]
       }

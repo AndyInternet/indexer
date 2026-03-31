@@ -885,7 +885,7 @@ def plugin_group():
 
 def _plugin_dir() -> Path:
     """Return the absolute path to the plugin directory shipped with this package."""
-    return (Path(__file__).resolve().parent.parent.parent / "plugin")
+    return Path(__file__).resolve().parent / "plugin"
 
 
 def _claude_settings_path(root: Path) -> Path:
