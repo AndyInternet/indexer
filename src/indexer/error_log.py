@@ -86,7 +86,12 @@ def log_error(error: Exception, ctx: click.Context | None) -> None:
 
 
 class ErrorLoggingGroup(click.Group):
-    """Click group that logs unhandled exceptions to .indexer/errors.log."""
+    """Click group that logs unhandled exceptions to .indexer/errors.log.
+
+    Wraps the entire Click lifecycle (including argument parsing) so that
+    UsageError, BadParameter, and other Click exceptions that fire before
+    invoke() are also captured.
+    """
 
     def get_params(self, ctx: click.Context) -> list[click.Parameter]:
         params = super().get_params(ctx)
@@ -104,6 +109,18 @@ class ErrorLoggingGroup(click.Group):
             )
         )
         return params
+
+    def main(self, *args, **kwargs):
+        try:
+            return super().main(*args, **kwargs)
+        except SystemExit as e:
+            # Click turns UsageError into SystemExit(2). Log it if non-zero.
+            if e.code and e.code != 0:
+                log_error(e, None)
+            raise
+        except Exception as e:
+            log_error(e, None)
+            raise
 
     def invoke(self, ctx: click.Context) -> None:
         # Save raw args before Click consumes them during dispatch

@@ -370,7 +370,7 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+@click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max results to display (0=unlimited)")
 def search(query: str, path: str, limit: int):
     """Search symbols by name."""
     config = _get_config(path)
@@ -401,7 +401,7 @@ def search(query: str, path: str, limit: int):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+@click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max results to display (0=unlimited)")
 def refs(symbol: str, path: str, limit: int):
     """Find all references to a symbol."""
     config = _get_config(path)
@@ -432,7 +432,7 @@ def refs(symbol: str, path: str, limit: int):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-@click.option("--limit", "-l", default=50, help="Max files to display (0=unlimited)")
+@click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max files to display (0=unlimited)")
 def callers(symbol: str, path: str, limit: int):
     """Find all callers of a function."""
     config = _get_config(path)
@@ -538,7 +538,7 @@ def stats(path: str):
 @click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
-@click.option("--limit", "-l", default=50, help="Max results to display (0=unlimited)")
+@click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max results to display (0=unlimited)")
 def find_cmd(pattern: str, entry_type: str | None, path: str, limit: int):
     """Find files or directories matching a glob pattern."""
     config = _get_config(path)
