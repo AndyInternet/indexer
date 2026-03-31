@@ -1,3 +1,9 @@
+---
+name: setup
+description: Configure the current project so Claude prefers indexer commands over grep/glob for codebase navigation in all future sessions.
+argument-hint: ""
+---
+
 # Setup Indexer for This Project
 
 Configure the current project so Claude prefers `indexer` commands over grep/glob for codebase navigation in all future sessions.
@@ -77,41 +83,8 @@ Copy this block verbatim into agent prompts. Do not paraphrase or abbreviate it.
 | Remove ignore/allow pattern | `indexer config remove <pattern>` |
 ````
 
-3. Install the PreToolUse hook that reminds agents to use indexer:
-
-   a. Create the directory `.claude/hooks/` if it doesn't exist.
-
-   b. Create `.claude/hooks/pretool-indexer-hint.sh` with the hook script from the indexer repository. This script:
-      - Detects when Grep is used with symbol-like patterns (CamelCase, snake_case, PascalCase, ALL_CAPS)
-      - Detects when Glob is used for broad code exploration (`**/*.py`, `**/*`, etc.)
-      - Injects `additionalContext` reminding to use indexer commands
-      - Never blocks — only adds helpful reminders
-
-   c. Make it executable: `chmod +x .claude/hooks/pretool-indexer-hint.sh`
-
-   d. Create or update `.claude/settings.json` to register the hook:
-   ```json
-   {
-     "hooks": {
-       "PreToolUse": [
-         {
-           "matcher": "Grep|Glob",
-           "hooks": [
-             {
-               "type": "command",
-               "command": "bash .claude/hooks/pretool-indexer-hint.sh"
-             }
-           ]
-         }
-       ]
-     }
-   }
-   ```
-   If `.claude/settings.json` already exists, merge the `hooks` key — do not overwrite other settings. Do not add permissions here — they are installed globally by `install.sh`.
-
-4. Tell the user:
+3. Tell the user:
    - CLAUDE.md has been updated with comprehensive indexer instructions
-   - A PreToolUse hook has been installed to remind agents about indexer commands
    - Claude will now prefer `indexer` commands over grep/glob in this project
    - The index will be built automatically on first use (no manual `indexer init` needed)
    - The index auto-updates on every query when the fingerprint changes (git HEAD, working tree status, or `.indexer/config.json` changes). Non-git repos use file mtime fingerprinting instead.

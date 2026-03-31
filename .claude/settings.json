@@ -1,4 +1,7 @@
 {
+  "plugins": [
+    "/Users/alawrence/Projects/indexer/plugin"
+  ],
   "permissions": {
     "allow": [
       "Bash(indexer map:*)",
@@ -20,11 +23,11 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Grep|Glob",
+        "matcher": "Grep|Glob|Bash|LSP",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .claude/hooks/pretool-indexer-hint.sh"
+            "command": "bash /Users/alawrence/Projects/indexer/plugin/hooks/pretool-indexer-hint.sh"
           }
         ]
       }

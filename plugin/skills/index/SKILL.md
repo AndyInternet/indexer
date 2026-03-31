@@ -1,3 +1,9 @@
+---
+name: index
+description: Build or incrementally update the structural code index for the current project. Rarely needed — queries auto-update.
+argument-hint: ""
+---
+
 # Index Codebase
 
 Build or incrementally update the structural code index for the current project.
@@ -26,10 +32,14 @@ indexer map --tokens 1024
 
 ## If indexer is not installed
 
-If the `indexer` command is not found, tell the user to install it globally:
+If the `indexer` command is not found, tell the user to install it:
 
 ```bash
 uv tool install indexer
 ```
 
-Then suggest they also run `/indexer-setup` to configure Claude to prefer the index for codebase navigation.
+Or from a local clone:
+
+```bash
+uv tool install /path/to/indexer
+```

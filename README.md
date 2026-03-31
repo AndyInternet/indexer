@@ -40,20 +40,13 @@ Indexer generates a local SQLite index of your codebase containing:
 
 ## Quickstart
 
-### Install globally
+### Install the CLI
 
 ```bash
-# Install or upgrade everything (CLI tool + Claude commands + permissions)
-./install.sh
+uv tool install /path/to/indexer
 ```
 
-Once installed, `indexer` is available as a command anywhere on your system. Running `install.sh` again upgrades everything in place.
-
-To uninstall:
-
-```bash
-./uninstall.sh
-```
+Once installed, `indexer` is available as a command anywhere on your system. To upgrade, run the same command with `--force`.
 
 ### Index a codebase
 
@@ -243,48 +236,70 @@ Files are tracked by SHA-256 content hash, so only changed files are re-parsed. 
 
 ## Claude Code Integration
 
-### Global install
+The plugin gives Claude Code skills, auto-allowed permissions, and a PreToolUse hook — all in one package. It requires the `indexer` CLI to be installed first (see [Quickstart](#quickstart)).
 
-`install.sh` sets up everything globally — CLI tool, Claude commands, permissions, and a PreToolUse hook:
+### Install the plugin
 
 ```bash
-./install.sh
+cd /path/to/your/project
+indexer plugin install
 ```
 
-This gives you `indexer` commands in every project. The index auto-builds on first use and auto-updates on subsequent queries. No per-project setup is required for basic usage.
+This writes `.claude/settings.json` in the project with:
 
-### Per-project setup (optional)
+- Plugin reference (absolute path to the plugin directory)
+- Auto-allowed permissions for all `indexer` commands
+- PreToolUse hook that intercepts Grep/Glob/Bash/LSP and redirects to `indexer`
 
-For projects where you want Claude to systematically prefer indexer over grep/glob, run the `/indexer-setup` command inside the project. This:
+Start a new Claude Code session to activate. You now have:
 
-- Appends comprehensive indexer instructions to `CLAUDE.md` (default workflow, exceptions table, anti-patterns, agent prompt block)
-- Installs a project-level PreToolUse hook (supplements the global hook)
+- `/indexer:setup` — one-time per-project setup (adds CLAUDE.md instructions)
+- `/indexer:index` — explicitly build or update the index
+- `/indexer:explore` — spawn an exploration agent pre-loaded with indexer commands
 
-Without this, Claude will still get nudges from the global hook when it reaches for Grep/Glob, but won't have the full CLAUDE.md instructions guiding its workflow.
+### Manage the plugin
 
-### Commands
+```bash
+indexer plugin status      # Check if installed
+indexer plugin uninstall   # Remove from project
+```
 
-| Command | Description |
+### Per-project setup
+
+The hook intercepts tool calls and redirects to `indexer`. For full integration — where Claude systematically prefers indexer for all code navigation — run the setup skill inside the project:
+
+```
+/indexer:setup
+```
+
+This appends comprehensive instructions to `CLAUDE.md`: default workflow, exceptions table, anti-patterns, and an agent prompt block.
+
+### Skills reference
+
+| Skill | Description |
 |---|---|
-| `/indexer-setup` | One-time per-project setup — adds CLAUDE.md instructions and project-level hook |
-| `/indexer-index` | Explicitly builds or updates the index (rarely needed — queries auto-update) |
-| `/indexer-explore` | Spawns an exploration agent pre-loaded with indexer instructions |
-
-`/indexer-explore` is useful for investigating unfamiliar code:
+| `/indexer:setup` | Adds CLAUDE.md instructions so Claude prefers indexer for code navigation |
+| `/indexer:index` | Explicitly builds or updates the index (rarely needed — queries auto-update) |
+| `/indexer:explore <question>` | Spawns an exploration agent pre-loaded with indexer commands |
 
 ```
-/indexer-explore How does the PageRank computation work?
-/indexer-explore Trace all callers of Database.connect
+/indexer:explore How does the PageRank computation work?
+/indexer:explore Trace all callers of Database.connect
 ```
 
 ### PreToolUse hook
 
-The hook (installed globally by `install.sh`) watches for Grep and Glob tool calls that look like symbol navigation:
+The hook intercepts Grep, Glob, and Bash tool calls and redirects them to the appropriate `indexer` command:
 
-- **Grep with symbol-like patterns** (CamelCase, snake_case, PascalCase, ALL_CAPS) — injects a reminder to use `indexer search`/`refs`/`callers`
-- **Glob with broad code patterns** (`**/*.py`, `**/*`) — reminds to use `indexer map`/`find`/`tree`
+- **Grep with symbol-like patterns** (camelCase, snake_case, PascalCase, SCREAMING_SNAKE, $-prefixed) → `indexer search`/`refs`/`callers`
+- **Grep with any other pattern** → `indexer grep` (PageRank-ranked results)
+- **Glob** (all patterns) → `indexer find`/`map`/`tree`
+- **Bash `find`** → `indexer find`
+- **Bash `grep`/`rg`** → `indexer grep`
+- **Bash `ls -R`** → `indexer tree`
+- **Bash `cat` on source files** → `indexer skeleton`/`impl`
 
-The hook never blocks — it only adds context to nudge agents toward the index.
+The hook denies the tool call and provides the correct `indexer` alternative in the denial reason. Non-code commands (`git`, `npm`, `pytest`, `indexer` itself, etc.) pass through unblocked.
 
 ## Benchmarking
 

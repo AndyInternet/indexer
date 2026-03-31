@@ -877,5 +877,218 @@ def config_remove(pattern: str, path: str):
         click.echo(f"Pattern not found in ignore or allow: {pattern}")
 
 
+@main.group("plugin")
+def plugin_group():
+    """Manage the Claude Code plugin."""
+    pass
+
+
+def _plugin_dir() -> Path:
+    """Return the absolute path to the plugin directory shipped with this package."""
+    return (Path(__file__).resolve().parent.parent.parent / "plugin")
+
+
+def _claude_settings_path(root: Path) -> Path:
+    return root / ".claude" / "settings.json"
+
+
+@plugin_group.command("install")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def plugin_install(path: str):
+    """Install the Claude Code plugin into a project."""
+    import json
+
+    root = Path(path).resolve()
+    plugin_path = _plugin_dir()
+
+    if not plugin_path.exists():
+        click.echo(f"Plugin directory not found: {plugin_path}", err=True)
+        click.echo("Is indexer installed correctly?", err=True)
+        sys.exit(1)
+
+    hook_script = plugin_path / "hooks" / "pretool-indexer-hint.sh"
+    settings_path = _claude_settings_path(root)
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Load existing settings or start fresh
+    existing = {}
+    if settings_path.exists():
+        try:
+            existing = json.loads(settings_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # Merge plugin reference
+    plugins = existing.get("plugins", [])
+    plugin_str = str(plugin_path)
+    if plugin_str not in plugins:
+        plugins.append(plugin_str)
+    existing["plugins"] = plugins
+
+    # Merge permissions
+    indexer_perms = [
+        "Bash(indexer map:*)",
+        "Bash(indexer search:*)",
+        "Bash(indexer refs:*)",
+        "Bash(indexer callers:*)",
+        "Bash(indexer impl:*)",
+        "Bash(indexer skeleton:*)",
+        "Bash(indexer grep:*)",
+        "Bash(indexer find:*)",
+        "Bash(indexer tree:*)",
+        "Bash(indexer stats:*)",
+        "Bash(indexer init:*)",
+        "Bash(indexer update:*)",
+        "Bash(indexer config:*)",
+        "Bash(indexer --help:*)",
+    ]
+    perms = existing.setdefault("permissions", {})
+    allow = perms.setdefault("allow", [])
+    for p in indexer_perms:
+        if p not in allow:
+            allow.append(p)
+
+    # Set hooks
+    existing["hooks"] = {
+        "PreToolUse": [
+            {
+                "matcher": "Grep|Glob|Bash|LSP",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": f"bash {hook_script}",
+                    }
+                ],
+            }
+        ]
+    }
+
+    settings_path.write_text(json.dumps(existing, indent=2) + "\n")
+
+    click.echo(f"Installed Claude Code plugin into {settings_path}")
+    click.echo(f"  Plugin: {plugin_path}")
+    click.echo(f"  Hook:   {hook_script}")
+    click.echo(f"  Permissions: {len(indexer_perms)} indexer commands auto-allowed")
+    click.echo("\nStart a new Claude Code session to activate.")
+
+
+@plugin_group.command("uninstall")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def plugin_uninstall(path: str):
+    """Remove the Claude Code plugin from a project."""
+    import json
+
+    root = Path(path).resolve()
+    settings_path = _claude_settings_path(root)
+
+    if not settings_path.exists():
+        click.echo("No .claude/settings.json found — nothing to uninstall.")
+        return
+
+    try:
+        existing = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        click.echo("Could not parse .claude/settings.json")
+        sys.exit(1)
+
+    plugin_str = str(_plugin_dir())
+    changed = False
+
+    # Remove plugin reference
+    plugins = existing.get("plugins", [])
+    if plugin_str in plugins:
+        plugins.remove(plugin_str)
+        changed = True
+    if not plugins:
+        existing.pop("plugins", None)
+    else:
+        existing["plugins"] = plugins
+
+    # Remove indexer permissions
+    allow = existing.get("permissions", {}).get("allow", [])
+    original_len = len(allow)
+    allow = [p for p in allow if not p.startswith("Bash(indexer ")]
+    if len(allow) != original_len:
+        changed = True
+    if allow:
+        existing.setdefault("permissions", {})["allow"] = allow
+    else:
+        existing.get("permissions", {}).pop("allow", None)
+        if not existing.get("permissions"):
+            existing.pop("permissions", None)
+
+    # Remove hooks that reference the indexer hook script
+    hooks = existing.get("hooks", {}).get("PreToolUse", [])
+    hooks = [
+        h
+        for h in hooks
+        if not any(
+            "pretool-indexer-hint" in hook.get("command", "")
+            for hook in h.get("hooks", [])
+        )
+    ]
+    if hooks:
+        existing.setdefault("hooks", {})["PreToolUse"] = hooks
+    else:
+        existing.get("hooks", {}).pop("PreToolUse", None)
+        if not existing.get("hooks"):
+            existing.pop("hooks", None)
+    changed = True
+
+    if changed:
+        settings_path.write_text(json.dumps(existing, indent=2) + "\n")
+        click.echo(f"Removed indexer plugin from {settings_path}")
+    else:
+        click.echo("Indexer plugin was not installed in this project.")
+
+
+@plugin_group.command("status")
+@click.option(
+    "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
+)
+def plugin_status(path: str):
+    """Check if the Claude Code plugin is installed."""
+    import json
+
+    root = Path(path).resolve()
+    settings_path = _claude_settings_path(root)
+
+    if not settings_path.exists():
+        click.echo("Not installed — no .claude/settings.json found.")
+        return
+
+    try:
+        existing = json.loads(settings_path.read_text())
+    except (json.JSONDecodeError, OSError):
+        click.echo("Could not parse .claude/settings.json")
+        return
+
+    plugin_str = str(_plugin_dir())
+    has_plugin = plugin_str in existing.get("plugins", [])
+    has_hooks = any(
+        "pretool-indexer-hint" in hook.get("command", "")
+        for entry in existing.get("hooks", {}).get("PreToolUse", [])
+        for hook in entry.get("hooks", [])
+    )
+    allow = existing.get("permissions", {}).get("allow", [])
+    has_perms = any(p.startswith("Bash(indexer ") for p in allow)
+
+    if has_plugin and has_hooks and has_perms:
+        click.echo("Installed ✓")
+        click.echo(f"  Plugin: {plugin_str}")
+        click.echo(f"  Hooks:  active")
+        click.echo(f"  Perms:  {sum(1 for p in allow if p.startswith('Bash(indexer '))} commands auto-allowed")
+    else:
+        click.echo("Partially installed:")
+        click.echo(f"  Plugin: {'✓' if has_plugin else '✗'}")
+        click.echo(f"  Hooks:  {'✓' if has_hooks else '✗'}")
+        click.echo(f"  Perms:  {'✓' if has_perms else '✗'}")
+        click.echo("\nRun 'indexer plugin install' to fix.")
+
+
 if __name__ == "__main__":
     main()
