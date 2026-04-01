@@ -559,9 +559,15 @@ def find_cmd(pattern: str, entry_type: str | None, path: str, limit: int):
     if entry_type != "f":
         candidates.extend((d, "d") for d in sorted(directories))
 
-    # Auto-wrap pattern with * if it has no glob characters (substring match)
+    # Auto-wrap pattern with * for substring matching
     has_glob = any(c in pattern for c in "*?[")
-    effective_pattern = pattern if has_glob else f"*{pattern}*"
+    if not has_glob:
+        effective_pattern = f"*{pattern}*"
+    elif use_full_path and not pattern.startswith(("*", "?", "[")):
+        # Pattern like "RunDetailsV4/*" should match anywhere in the path
+        effective_pattern = f"*{pattern}"
+    else:
+        effective_pattern = pattern
 
     # Match: if pattern contains /, match full path; otherwise match basename
     use_full_path = "/" in pattern
