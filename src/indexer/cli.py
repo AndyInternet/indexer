@@ -371,7 +371,15 @@ def repo_map(tokens: int, focus: tuple[str, ...], path: str):
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
 @click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max results to display (0=unlimited)")
-def search(query: str, path: str, limit: int):
+@click.option(
+    "--type", "--kind", "-k", "kind",
+    default=None,
+    help="Filter by symbol kind (e.g. function, class, method)",
+)
+@click.option(
+    "--file-pattern", "-f", default=None, help="Glob pattern to filter by file path"
+)
+def search(query: str, path: str, limit: int, kind: str | None, file_pattern: str | None):
     """Search symbols by name."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
@@ -379,6 +387,26 @@ def search(query: str, path: str, limit: int):
     results = db.search_symbols(query)
     if not results:
         click.echo(f"No symbols matching '{query}'")
+        sys.exit(0)
+
+    # Filter by symbol kind
+    if kind:
+        kind_lower = kind.lower()
+        results = [(s, fp) for s, fp in results if s.kind.lower() == kind_lower]
+
+    # Filter by file pattern
+    if file_pattern:
+        has_glob = any(c in file_pattern for c in "*?[")
+        effective_fp = file_pattern if has_glob else f"*{file_pattern}*"
+        use_full = "/" in file_pattern
+        results = [
+            (s, fp)
+            for s, fp in results
+            if fnmatch.fnmatch(fp if use_full else Path(fp).name, effective_fp)
+        ]
+
+    if not results:
+        click.echo(f"No symbols matching '{query}' with given filters")
         sys.exit(0)
 
     total = len(results)
@@ -526,24 +554,37 @@ def stats(path: str):
 
 
 @main.command("find")
-@click.argument("pattern")
+@click.argument("patterns", nargs=-1, required=True)
 @click.option(
     "--type",
     "-t",
+    "--file-type",
     "entry_type",
     type=click.Choice(["f", "d"]),
     default=None,
     help="Filter: f=files, d=directories",
 )
 @click.option(
+    "--ext",
+    "-e",
+    "extensions",
+    multiple=True,
+    help="Filter by file extension (e.g. --ext ts --ext tsx)",
+)
+@click.option(
     "--path", "-p", default=".", type=click.Path(exists=True), help="Project root"
 )
 @click.option("--limit", "-l", "--max-results", "-m", default=50, help="Max results to display (0=unlimited)")
-def find_cmd(pattern: str, entry_type: str | None, path: str, limit: int):
-    """Find files or directories matching a glob pattern."""
+def find_cmd(patterns: tuple[str, ...], entry_type: str | None, extensions: tuple[str, ...], path: str, limit: int):
+    """Find files or directories matching glob patterns."""
     config = _get_config(path)
     db = _get_db(config, fresh=True)
     file_paths = db.get_all_file_paths()
+
+    # Filter by extension if specified
+    if extensions:
+        normalized = {ext.lstrip(".") for ext in extensions}
+        file_paths = [p for p in file_paths if any(p.endswith(f".{e}") for e in normalized)]
 
     # Derive directory set from file paths
     directories: set[str] = set()
@@ -559,29 +600,39 @@ def find_cmd(pattern: str, entry_type: str | None, path: str, limit: int):
     if entry_type != "f":
         candidates.extend((d, "d") for d in sorted(directories))
 
-    # Auto-wrap pattern with * for substring matching
-    has_glob = any(c in pattern for c in "*?[")
-    if not has_glob:
-        effective_pattern = f"*{pattern}*"
-    elif use_full_path and not pattern.startswith(("*", "?", "[")):
-        # Pattern like "RunDetailsV4/*" should match anywhere in the path
-        effective_pattern = f"*{pattern}"
-    else:
-        effective_pattern = pattern
-
-    # Match: if pattern contains /, match full path; otherwise match basename
-    use_full_path = "/" in pattern
     matches = []
-    for candidate, ctype in candidates:
-        target = candidate if use_full_path else Path(candidate).name
-        if fnmatch.fnmatch(target, effective_pattern):
-            suffix = "/" if ctype == "d" else ""
-            matches.append(f"{candidate}{suffix}")
+    for pattern in patterns:
+        # Match: if pattern contains /, match full path; otherwise match basename
+        use_full_path = "/" in pattern
 
-    if not matches:
-        click.echo(f"No matches for '{pattern}'")
+        # Auto-wrap pattern with * for substring matching
+        has_glob = any(c in pattern for c in "*?[")
+        if not has_glob:
+            effective_pattern = f"*{pattern}*"
+        elif use_full_path and not pattern.startswith(("*", "?", "[")):
+            # Pattern like "RunDetailsV4/*" should match anywhere in the path
+            effective_pattern = f"*{pattern}"
+        else:
+            effective_pattern = pattern
+
+        for candidate, ctype in candidates:
+            target = candidate if use_full_path else Path(candidate).name
+            if fnmatch.fnmatch(target, effective_pattern):
+                suffix = "/" if ctype == "d" else ""
+                matches.append(f"{candidate}{suffix}")
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_matches = []
+    for m in matches:
+        if m not in seen:
+            seen.add(m)
+            unique_matches.append(m)
+
+    if not unique_matches:
+        click.echo(f"No matches for '{' '.join(patterns)}'")
     else:
-        sorted_matches = sorted(matches)
+        sorted_matches = sorted(unique_matches)
         total = len(sorted_matches)
         display = sorted_matches if limit == 0 else sorted_matches[:limit]
         for m in display:
@@ -680,6 +731,9 @@ def tree(subpath: str, depth: int, path: str):
     hidden=True,
     help="Accepted for compatibility (ignored; grep always searches files)",
 )
+@click.option("-A", "--after-context", "after_context", type=int, default=0, help="Lines of context after match")
+@click.option("-B", "--before-context", "before_context", type=int, default=0, help="Lines of context before match")
+@click.option("-C", "--context", "context_lines", type=int, default=0, help="Lines of context before and after match")
 def grep_cmd(
     pattern: str,
     file_arg: str | None,
@@ -689,6 +743,9 @@ def grep_cmd(
     max_results: int,
     path: str,
     file_type: str | None,
+    after_context: int,
+    before_context: int,
+    context_lines: int,
 ):
     """Full-text search across all indexed files, ranked by importance."""
     from indexer.graph.builder import build_dependency_graph
@@ -701,6 +758,10 @@ def grep_cmd(
         raise click.UsageError(
             "Cannot specify both a positional file argument and --file-pattern"
         )
+
+    # Resolve context line counts (-C overrides -A/-B)
+    ctx_before = context_lines if context_lines else before_context
+    ctx_after = context_lines if context_lines else after_context
 
     config = _get_config(path)
 
@@ -742,21 +803,32 @@ def grep_cmd(
     file_paths.sort(key=lambda p: (-scores.get(p, 0.0), p))
 
     # Collect matches grouped by file, preserving rank order
-    file_matches: list[tuple[str, list[tuple[int, str]]]] = []
+    has_context = ctx_before > 0 or ctx_after > 0
+    file_matches: list[tuple[str, list[tuple[int, str]], list[str] | None]] = []
     total_matches = 0
     for fp in file_paths:
         abs_path = config.root / fp
-        hits: list[tuple[int, str]] = []
         try:
             with open(abs_path, errors="ignore") as f:
-                for line_num, line in enumerate(f, 1):
-                    if regex.search(line):
-                        hits.append((line_num, line.rstrip()))
-                        total_matches += 1
+                all_lines = f.readlines() if has_context else None
+                if all_lines is None:
+                    # No context needed — stream match
+                    f.seek(0)
+                    hits: list[tuple[int, str]] = []
+                    for line_num, line in enumerate(f, 1):
+                        if regex.search(line):
+                            hits.append((line_num, line.rstrip()))
+                            total_matches += 1
+                else:
+                    hits = []
+                    for line_num, line in enumerate(all_lines, 1):
+                        if regex.search(line):
+                            hits.append((line_num, line.rstrip()))
+                            total_matches += 1
         except OSError:
             continue
         if hits:
-            file_matches.append((fp, hits))
+            file_matches.append((fp, hits, all_lines))
 
     if total_matches == 0:
         click.echo(f"No matches for '{pattern}'")
@@ -766,27 +838,51 @@ def grep_cmd(
     # Render results, most important files first
     files_only = file_type == "f"
     shown = 0
-    for fp, hits in file_matches:
-        if files_only:
-            click.echo(fp)
-            shown += 1
-            if shown >= max_results:
-                break
-        else:
-            score = scores.get(fp, 0.0)
-            rank_indicator = f" [rank: {score:.4f}]" if score > 0 else ""
-            click.echo(f"  {fp}{rank_indicator}")
-            for line_num, line_text in hits:
-                click.echo(f"    {line_num}:{line_text}")
+    try:
+        for fp, hits, all_lines in file_matches:
+            if files_only:
+                click.echo(fp)
                 shown += 1
                 if shown >= max_results:
-                    click.echo(f"\n... truncated at {max_results} results", err=True)
-                    db.close()
-                    return
-            click.echo()
+                    break
+            else:
+                score = scores.get(fp, 0.0)
+                rank_indicator = f" [rank: {score:.4f}]" if score > 0 else ""
+                click.echo(f"  {fp}{rank_indicator}")
+                if has_context and all_lines:
+                    # Build set of lines to display with context
+                    match_lines = {ln for ln, _ in hits}
+                    display_lines: set[int] = set()
+                    for ln in match_lines:
+                        for ctx_ln in range(ln - ctx_before, ln + ctx_after + 1):
+                            if 1 <= ctx_ln <= len(all_lines):
+                                display_lines.add(ctx_ln)
+                    prev_ln = 0
+                    for ln in sorted(display_lines):
+                        if prev_ln and ln > prev_ln + 1:
+                            click.echo("    --")
+                        marker = ">" if ln in match_lines else " "
+                        click.echo(f"   {marker}{ln}:{all_lines[ln - 1].rstrip()}")
+                        shown += 1
+                        if shown >= max_results:
+                            click.echo(f"\n... truncated at {max_results} results", err=True)
+                            db.close()
+                            return
+                        prev_ln = ln
+                else:
+                    for line_num, line_text in hits:
+                        click.echo(f"    {line_num}:{line_text}")
+                        shown += 1
+                        if shown >= max_results:
+                            click.echo(f"\n... truncated at {max_results} results", err=True)
+                            db.close()
+                            return
+                click.echo()
 
-    if not files_only:
-        click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
+        if not files_only:
+            click.echo(f"{total_matches} match(es) across {len(file_matches)} file(s)")
+    except BrokenPipeError:
+        pass
 
     db.close()
 

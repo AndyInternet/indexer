@@ -107,7 +107,7 @@ class Database:
             gitignore = self.db_path.parent / ".gitignore"
             if not gitignore.exists():
                 gitignore.write_text("*\n")
-            self._conn = sqlite3.connect(str(self.db_path))
+            self._conn = sqlite3.connect(str(self.db_path), timeout=10)
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA foreign_keys=ON")
             self._conn.row_factory = sqlite3.Row
